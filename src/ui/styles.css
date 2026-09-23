@@ -23,6 +23,8 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 .app-shell {
   min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
   background:
     radial-gradient(circle at 82% 9%, rgba(255,255,255,.055), transparent 28%),
     linear-gradient(180deg, #0b0d10, #07090b 55%);
@@ -211,4 +213,82 @@ button:disabled { opacity: .48; cursor: default; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .stats-grid div:last-child { grid-column: 1 / -1; }
   .period-switch button { font-size: 8px; padding: 0 3px; }
+}
+
+.orientation-warning {
+  display: none;
+}
+
+@media (max-height: 850px) and (orientation: portrait) {
+  .app-shell {
+    padding-top: calc(6px + var(--safe-top));
+    padding-bottom: calc(66px + var(--safe-bottom));
+  }
+
+  .topbar { height: 44px; }
+  .brand-mark { width: 30px; height: 30px; }
+  .sync-pill { min-height: 30px; }
+
+  .count-page { gap: 5px; }
+  .hero-total { min-height: 62px; padding-top: 3px; padding-bottom: 3px; }
+  .hero-total strong { font-size: clamp(42px, 11vw, 62px); }
+  .mode-switch { height: 48px; }
+
+  .pallet-list { gap: 4px; }
+  .pallet-row {
+    min-height: 60px;
+    padding: 0 3px;
+  }
+  .stack-button, .adjust-button {
+    min-height: 60px;
+  }
+  .type-copy { gap: 2px; }
+  .type-copy strong { font-size: 12px; }
+  .type-copy span, .row-stock span { font-size: 8px; }
+  .row-stock strong { font-size: 20px; }
+
+  .last-action {
+    min-height: 46px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .bottom-nav {
+    height: 56px;
+    bottom: calc(5px + var(--safe-bottom));
+  }
+  .bottom-nav button { min-height: 44px; }
+
+  .stats-page { gap: 6px; padding-top: 6px; }
+  .period-switch button { min-height: 36px; }
+  .filter-row { min-height: 40px; }
+  .stat-hero { min-height: 108px; padding: 12px; }
+  .stat-hero strong { font-size: 56px; }
+  .stats-grid { gap: 6px; }
+  .stats-grid div { padding: 9px; }
+  .stats-grid strong { font-size: 22px; }
+  .bar-chart { gap: 6px; padding: 9px 12px; }
+  .bar-row { min-height: 22px; }
+}
+
+@media (orientation: landscape) and (max-height: 650px) {
+  .orientation-warning {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-content: center;
+    gap: 8px;
+    padding: 24px;
+    text-align: center;
+    background: #080a0c;
+  }
+  .orientation-warning strong {
+    font-size: 18px;
+    letter-spacing: .1em;
+  }
+  .orientation-warning span {
+    color: var(--muted);
+    font-size: 12px;
+  }
 }
