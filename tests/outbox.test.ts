@@ -77,6 +77,29 @@ class FakeRemote implements RemoteEventStore {
   }
 }
 
+class DependencyRemote extends FakeRemote {
+  readonly uploadOrder: string[] = [];
+
+  override async createEvent(event: PalletEvent): Promise<RemoteCreateResult> {
+    if (
+      event.art === 'KORREKTUR'
+      && (
+        !event.korrigiertId
+        || !this.events.has(event.korrigiertId)
+      )
+    ) {
+      throw new RemoteCreateError(
+        'PERMISSION_DENIED',
+        'original-not-confirmed',
+      );
+    }
+
+    const result = await super.createEvent(event);
+    this.uploadOrder.push(event.id);
+    return result;
+  }
+}
+
 afterEach(async () => {
   for (const name of dbNames.splice(0)) {
     const db = new UphoffLocalDb(name);
@@ -220,6 +243,75 @@ describe('E2.2 outbox and retry', () => {
       await db.close();
     }
   });
+
+  it('uploads an original before its pending correction even if outbox timing is reversed', async () => {
+    const db = makeDb('e22-correction-dependency');
+    const remote = new DependencyRemote();
+
+    await persistAndQueueEvent(
+      db,
+      makeEvent({
+        id: 'original',
+        art: 'ZUGANG',
+        delta: 15,
+      }),
+      1000,
+    );
+
+    await persistAndQueueEvent(
+      db,
+      makeEvent({
+        id: 'korr_original',
+        art: 'KORREKTUR',
+        delta: -15,
+        korrigiertId: 'original',
+      }),
+      900,
+    );
+
+    const result = await runSyncPass(db, remote, 1000);
+
+    expect(result.confirmed).toBe(2);
+    expect(result.rejected).toBe(0);
+    expect(remote.uploadOrder).toEqual(['original', 'korr_original']);
+    expect((await db.events.get('original'))?.syncState).toBe('CONFIRMED');
+    expect((await db.events.get('korr_original'))?.syncState).toBe('CONFIRMED');
+    await db.close();
+  });
+
+  it('defers a correction when its original cannot be confirmed in the same pass', async () => {
+    const db = makeDb('e22-correction-waits');
+    const remote = new FakeRemote();
+    remote.mode = 'TRANSIENT';
+
+    await persistAndQueueEvent(
+      db,
+      makeEvent({ id: 'original-wait' }),
+      1000,
+    );
+    await persistAndQueueEvent(
+      db,
+      makeEvent({
+        id: 'korr_original-wait',
+        art: 'KORREKTUR',
+        delta: -15,
+        korrigiertId: 'original-wait',
+      }),
+      1000,
+    );
+
+    const result = await runSyncPass(db, remote, 1000);
+
+    expect(result.retried).toBe(2);
+    expect(
+      (await db.outbox.get('korr_original-wait'))?.lastError,
+    ).toBe('WAITING_FOR_ORIGINAL_CONFIRMATION');
+    expect(
+      (await db.events.get('korr_original-wait'))?.syncState,
+    ).toBe('PENDING');
+    await db.close();
+  });
+
 
   it('never creates a second local event when the same tap is queued twice', async () => {
     const db = makeDb('e22-local-idempotence');
