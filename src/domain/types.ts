@@ -21,6 +21,7 @@ export interface PalletEvent {
   vorgangId?: string;
   korrigiertId?: string;
   umbuchungId?: string;
+  umbuchungPartnerId?: string;
   clockSkewFlag?: boolean;
 }
 
