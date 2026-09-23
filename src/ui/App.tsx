@@ -77,7 +77,7 @@ export function App() {
   const controllerRef = useRef<LocalBookingController | null>(null);
   const remoteRef = useRef<RemoteRealtimeEventStore | null>(null);
   const realtimeStopRef = useRef<RemoteUnsubscribe | null>(null);
-  const syncTaskRef = useRef<Promise<void> | null>(null);
+  const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const swipeStartX = useRef<number | null>(null);
 
   const [tab, setTab] = useState<Tab>('COUNT');
@@ -155,25 +155,41 @@ export function App() {
     }
   };
 
-  const pushPending = async (controller: LocalBookingController) => {
-    const remote = remoteRef.current;
-    if (!remote) return;
-
-    try {
-      await runSyncPass(controller.db, remote, Date.now());
-      setBackendState(navigator.onLine ? 'ACTIVE' : 'OFFLINE');
-    } catch (caught) {
-      setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
-      await recordSyncError(controller, 'SYNC_PUSH_FAILED', caught);
-    } finally {
-      await refreshLocalState(controller);
-    }
+  const enqueueSync = (
+    work: () => Promise<void>,
+  ): Promise<void> => {
+    const task = syncQueueRef.current.then(work, work);
+    syncQueueRef.current = task.catch(() => undefined);
+    return task;
   };
 
-  const fullSync = (controller: LocalBookingController): Promise<void> => {
-    if (syncTaskRef.current) return syncTaskRef.current;
+  const pushPending = (
+    controller: LocalBookingController,
+  ): Promise<void> => {
+    if (!remoteRef.current) return Promise.resolve();
 
-    const task = (async () => {
+    return enqueueSync(async () => {
+      const remote = remoteRef.current;
+      if (!remote) return;
+
+      try {
+        await runSyncPass(controller.db, remote, Date.now());
+        setBackendState(navigator.onLine ? 'ACTIVE' : 'OFFLINE');
+      } catch (caught) {
+        setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
+        await recordSyncError(controller, 'SYNC_PUSH_FAILED', caught);
+      } finally {
+        await refreshLocalState(controller);
+      }
+    });
+  };
+
+  const fullSync = (
+    controller: LocalBookingController,
+  ): Promise<void> => {
+    if (!remoteRef.current) return Promise.resolve();
+
+    return enqueueSync(async () => {
       const remote = remoteRef.current;
       if (!remote) return;
 
@@ -192,12 +208,7 @@ export function App() {
       } finally {
         await refreshLocalState(controller);
       }
-    })();
-
-    syncTaskRef.current = task.finally(() => {
-      syncTaskRef.current = null;
     });
-    return syncTaskRef.current;
   };
 
   useEffect(() => {
