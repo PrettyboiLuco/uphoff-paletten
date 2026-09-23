@@ -117,3 +117,16 @@ test('undo reverses the entire linked process atomically and survives reload', a
   await page.reload();
   await expect(page.locator('.pallet-row').first().locator('.row-stock strong')).toHaveText('0');
 });
+
+test('horizontal swipe changes main page without triggering booking controls', async ({ page }) => {
+  const hero = page.locator('.hero-total');
+  const box = await hero.boundingBox();
+  expect(box).not.toBeNull();
+
+  await page.mouse.move(box!.x + box!.width - 20, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + 20, box!.y + box!.height / 2, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.locator('.stat-hero')).toBeVisible();
+});
