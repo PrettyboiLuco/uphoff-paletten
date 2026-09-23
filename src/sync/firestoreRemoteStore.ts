@@ -184,7 +184,7 @@ export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {
           collection(this.db, 'events'),
           orderBy('serverzeit', 'asc'),
           orderBy(documentId(), 'asc'),
-          startAfter(Timestamp.fromDate(new Date(after.serverzeit)), after.id),
+          startAt(timestampFromExactIso(after.serverzeit)),
         )
       : query(
           collection(this.db, 'events'),
