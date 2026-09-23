@@ -1,4 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { listEvents } from '../persistence/localDb';
+import {
+  comparePeriod,
+  periodWindow,
+  statisticsForRange,
+  type PeriodComparison,
+  type PeriodStatistics,
+  type StatisticsPeriodKind,
+} from '../statistics/statistics';
 import { LocalBookingController, type BookingAction } from './bookingController';
 import { PALLET_TYPES } from './config';
 import { syncLabel, type CountMode } from './logic';
@@ -11,6 +20,27 @@ interface LastAction {
   mode: CountMode;
 }
 
+const emptyStats: PeriodStatistics = {
+  dazugekommen: 0,
+  weggekommen: 0,
+  inventurdifferenz: 0,
+  nettoBestandsaenderung: 0,
+  bySort: {},
+};
+
+const emptyComparison: PeriodComparison = {
+  dazugekommen: { current: 0, previous: 0, percentChange: 0 },
+  weggekommen: { current: 0, previous: 0, percentChange: 0 },
+  inventurdifferenz: { current: 0, previous: 0, percentChange: 0 },
+};
+
+const PERIODS: readonly { id: StatisticsPeriodKind; label: string }[] = [
+  { id: 'TODAY', label: 'HEUTE' },
+  { id: 'FOUR_WEEKS', label: '4 WOCHEN' },
+  { id: 'SIX_MONTHS', label: '6 MONATE' },
+  { id: 'ONE_YEAR', label: '1 JAHR' },
+];
+
 export function App() {
   const controllerRef = useRef<LocalBookingController | null>(null);
   const [tab, setTab] = useState<Tab>('COUNT');
@@ -20,6 +50,23 @@ export function App() {
   const [pendingCount, setPendingCount] = useState(0);
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<StatisticsPeriodKind>('TODAY');
+  const [sortFilter, setSortFilter] = useState<string>('ALL');
+  const [stats, setStats] = useState<PeriodStatistics>(emptyStats);
+  const [comparison, setComparison] = useState<PeriodComparison>(emptyComparison);
+
+  const refreshStatistics = async (
+    controller: LocalBookingController,
+    nextPeriod = period,
+    nextSort = sortFilter,
+  ) => {
+    const events = await listEvents(controller.db);
+    const now = new Date().toISOString();
+    const window = periodWindow(nextPeriod, now);
+    const sort = nextSort === 'ALL' ? undefined : nextSort;
+    setStats(statisticsForRange(events, window.current, sort));
+    setComparison(comparePeriod(events, nextPeriod, now, sort));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -33,6 +80,7 @@ export function App() {
         const pending = await controller.db.outbox.count();
         setPendingCount(pending);
         setSyncState(pending > 0 ? 'PENDING' : 'NEVER_SYNCED');
+        await refreshStatistics(controller);
       })
       .catch(() => {
         if (!cancelled) setError('Lokaler Speicher konnte nicht geöffnet werden.');
@@ -43,11 +91,28 @@ export function App() {
       controller.db.close();
       controllerRef.current = null;
     };
+    // Initialisierung bewusst nur einmal; Filteränderungen werden separat behandelt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const controller = controllerRef.current;
+    if (!controller) return;
+    void refreshStatistics(controller, period, sortFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, sortFilter]);
 
   const total = useMemo(
     () => Object.values(stocks).reduce((sum, value) => sum + value, 0),
     [stocks],
+  );
+
+  const maxOutgoing = useMemo(
+    () => Math.max(
+      1,
+      ...Object.values(stats.bySort).map((value) => value.weggekommen),
+    ),
+    [stats.bySort],
   );
 
   const book = async (
@@ -72,10 +137,16 @@ export function App() {
         delta: event.delta,
         mode,
       });
+      await refreshStatistics(controller);
     } catch {
       setError('Buchung wurde nicht gespeichert. Bitte erneut versuchen.');
     }
   };
+
+  const outgoingChange = comparison.weggekommen.percentChange;
+  const outgoingComparisonText = outgoingChange === null
+    ? 'Keine belastbare Vorperiode'
+    : `${outgoingChange >= 0 ? '+' : ''}${Math.round(outgoingChange)} % zur Vorperiode`;
 
   return (
     <main className="app-shell" data-mode={mode.toLowerCase()}>
@@ -129,7 +200,7 @@ export function App() {
                 <button
                   className="stack-button"
                   onClick={() => void book(type.id, 'STACK', type.stackSize)}
-                    aria-label={`${type.name} Stapel buchen`}
+                  aria-label={`${type.name} Stapel buchen`}
                 >
                   <span>{mode === 'EINGANG' ? '+' : '−'}{type.stackSize}</span>
                   <small>STAPEL</small>
@@ -137,14 +208,14 @@ export function App() {
                 <button
                   className="adjust-button"
                   onClick={() => void book(type.id, 'MINUS_ONE', type.stackSize)}
-                    aria-label={`${type.name} minus eins`}
+                  aria-label={`${type.name} minus eins`}
                 >
                   −1
                 </button>
                 <button
                   className="adjust-button"
                   onClick={() => void book(type.id, 'PLUS_ONE', type.stackSize)}
-                    aria-label={`${type.name} plus eins`}
+                  aria-label={`${type.name} plus eins`}
                 >
                   +1
                 </button>
@@ -166,16 +237,69 @@ export function App() {
         </section>
       ) : (
         <section className="stats-page">
+          <div className="period-switch" role="group" aria-label="Statistikzeitraum">
+            {PERIODS.map((item) => (
+              <button
+                key={item.id}
+                className={period === item.id ? 'active' : ''}
+                onClick={() => setPeriod(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="filter-row">
+            <label htmlFor="sort-filter">SORTE</label>
+            <select
+              id="sort-filter"
+              value={sortFilter}
+              onChange={(event) => setSortFilter(event.target.value)}
+            >
+              <option value="ALL">Alle Paletten</option>
+              {PALLET_TYPES.map((type) => (
+                <option key={type.id} value={type.id}>{type.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="stat-hero">
             <span>WEGGEKOMMEN</span>
-            <strong>0</strong>
-            <small>Heute</small>
+            <strong>{stats.weggekommen.toLocaleString('de-DE')}</strong>
+            <small>{outgoingComparisonText}</small>
           </div>
+
           <div className="stats-grid">
-            <div><span>Bestand</span><strong>{total}</strong></div>
-            <div><span>Dazugekommen</span><strong>0</strong></div>
+            <div>
+              <span>BESTAND</span>
+              <strong>{sortFilter === 'ALL' ? total : (stocks[sortFilter] ?? 0)}</strong>
+            </div>
+            <div>
+              <span>DAZUGEKOMMEN</span>
+              <strong>{stats.dazugekommen.toLocaleString('de-DE')}</strong>
+            </div>
+            <div>
+              <span>INVENTURDIFFERENZ</span>
+              <strong>{stats.inventurdifferenz > 0 ? '+' : ''}{stats.inventurdifferenz}</strong>
+            </div>
           </div>
-          <div className="chart-placeholder">Statistikdaten werden im nächsten UI-Schritt direkt aus E3 gespeist.</div>
+
+          <div className="bar-chart" aria-label="Weggekommen je Sorte">
+            {PALLET_TYPES
+              .filter((type) => sortFilter === 'ALL' || type.id === sortFilter)
+              .map((type) => {
+                const value = stats.bySort[type.id]?.weggekommen ?? 0;
+                return (
+                  <div className="bar-row" key={type.id}>
+                    <span>{type.name}</span>
+                    <div className="bar-track">
+                      <div className="bar-fill" style={{ width: `${(value / maxOutgoing) * 100}%` }} />
+                    </div>
+                    <strong>{value}</strong>
+                  </div>
+                );
+              })}
+          </div>
         </section>
       )}
 
