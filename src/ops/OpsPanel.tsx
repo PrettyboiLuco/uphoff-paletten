@@ -9,11 +9,14 @@ import {
   type RestoreResult,
 } from './backup';
 import { logOperationalError, recentOperationalErrors } from './errorLog';
-import { localHealthSnapshot } from './selfTest';
+import { localHealthSnapshot, runServerSelfTest, type SelfTestResult } from './selfTest';
+import type { RemoteReadableEventStore } from '../sync/types';
 import type { DeviceHealthSnapshot, OperationalError } from './types';
 
 interface Props {
   db: UphoffLocalDb;
+  remote: RemoteReadableEventStore | null;
+  deviceId: string | null;
   onClose: () => void;
   onDataChanged: () => void | Promise<void>;
 }
@@ -30,12 +33,13 @@ function downloadText(filename: string, text: string, type: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function OpsPanel({ db, onClose, onDataChanged }: Props) {
+export function OpsPanel({ db, remote, deviceId, onClose, onDataChanged }: Props) {
   const [health, setHealth] = useState<DeviceHealthSnapshot | null>(null);
   const [backupDue, setBackupDue] = useState(true);
   const [errors, setErrors] = useState<OperationalError[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
+  const [serverTest, setServerTest] = useState<SelfTestResult | null>(null);
 
   const refresh = async () => {
     const now = new Date().toISOString();
@@ -103,6 +107,48 @@ export function OpsPanel({ db, onClose, onDataChanged }: Props) {
     }
   };
 
+  const runServerCheck = async () => {
+    setMessage(null);
+    if (!remote) {
+      setMessage('Kein freigegebener Live-Server verbunden.');
+      return;
+    }
+
+    try {
+      const result = await runServerSelfTest(
+        db,
+        remote,
+        new Date().toISOString(),
+      );
+      setServerTest(result);
+
+      if (result.status === 'MATCH') {
+        setMessage('Server-Selbsttest: lokale und bestätigte Serverdaten stimmen überein.');
+      } else if (result.status === 'ATTENTION') {
+        setMessage('Server-Selbsttest: ausstehende oder fehlerhafte lokale Daten müssen zuerst geklärt werden.');
+      } else {
+        setMessage('Server-Selbsttest: Abweichung erkannt.');
+        await logOperationalError(db, {
+          code: 'SERVER_SELF_TEST_MISMATCH',
+          severity: 'ERROR',
+          message: 'Local and remote count/sum check codes differ.',
+          occurredAt: new Date().toISOString(),
+        });
+      }
+
+      await refresh();
+    } catch (error) {
+      await logOperationalError(db, {
+        code: 'SERVER_SELF_TEST_FAILED',
+        severity: 'ERROR',
+        message: error instanceof Error ? error.message : 'unknown-self-test-error',
+        occurredAt: new Date().toISOString(),
+      });
+      setMessage('Server-Selbsttest fehlgeschlagen.');
+      await refresh();
+    }
+  };
+
   const restoreFile = async (file: File) => {
     setMessage(null);
     setRestoreResult(null);
@@ -154,6 +200,7 @@ export function OpsPanel({ db, onClose, onDataChanged }: Props) {
         <div className="ops-actions">
           <button className="primary" onClick={() => void exportJson()}>JSON SICHERN</button>
           <button onClick={() => void exportCsv()}>CSV EXPORT</button>
+          <button disabled={!remote} onClick={() => void runServerCheck()}>SERVER PRÜFEN</button>
           <label className="file-action">
             JSON WIEDERHERSTELLEN
             <input
@@ -181,9 +228,16 @@ export function OpsPanel({ db, onClose, onDataChanged }: Props) {
         <div className="ops-note">
           <strong>SERVER-SELBSTTEST</strong>
           <span>
-            Die Prüflogik für Server-Count + Summe ist implementiert. Der Live-Servercheck wird aktiviert,
-            sobald die produktive Firebase-Konfiguration und Geräte-Anmeldung gesetzt sind.
+            {remote
+              ? 'Live-Prüfung verfügbar. Sie vergleicht bestätigte lokale Events mit dem Server-Prüfcode.'
+              : 'Noch keine freigegebene Firebase-Verbindung aktiv.'}
           </span>
+          {deviceId && <span>Gerät: {deviceId}</span>}
+          {serverTest && (
+            <span>
+              Ergebnis: {serverTest.status} · lokal {serverTest.local.eventCount} · Server {serverTest.remoteEventCount}
+            </span>
+          )}
         </div>
 
         <div className="error-list">
