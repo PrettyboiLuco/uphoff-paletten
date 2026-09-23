@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { assessOperation, correctionId, project } from '../src/domain/projection';
-import type { EventArt, PalletEvent } from '../src/domain/types';
+import type { EventArt, StoredEvent } from '../src/domain/types';
 
 let seq = 0;
 
 function event(
   art: EventArt,
   delta: number,
-  overrides: Partial<PalletEvent> = {},
-): PalletEvent {
+  overrides: Partial<StoredEvent> = {},
+): StoredEvent {
   seq += 1;
   const id = overrides.id ?? `e-${seq}`;
   return {
@@ -106,7 +106,7 @@ describe('E1 domain correctness', () => {
     expect(assessOperation('AUSGANG', [-15, 1, 1]).warning).toBe('NONE');
   });
 
-  it('rejects an orphan correction from the projection until its original exists', () => {
+  it('quarantines an orphan correction until its original exists', () => {
     const correction = event('KORREKTUR', 15, {
       id: 'korr_missing',
       korrigiertId: 'missing',
@@ -117,6 +117,24 @@ describe('E1 domain correctness', () => {
     expect(p.anomalies).toEqual(['korr_missing:orphan-correction']);
   });
 
+  it('quarantines same-id events whose immutable content conflicts', () => {
+    const a = event('ZUGANG', 15, { id: 'same-id' });
+    const b = event('ZUGANG', 17, { id: 'same-id' });
+
+    const p = project([a, b]);
+    expect(p.bestandGesamt).toBe(0);
+    expect(p.anomalies).toEqual(['same-id:id-content-conflict']);
+  });
+
+  it('accepts an exact same-id retry once and prefers its confirmed sync state', () => {
+    const pending = event('ZUGANG', 15, { id: 'retry', syncState: 'PENDING' });
+    const confirmed = { ...pending, syncState: 'CONFIRMED' as const };
+
+    const p = project([pending, confirmed]);
+    expect(p.bestandGesamt).toBe(15);
+    expect(p.anomalies).toEqual([]);
+  });
+
   it('E1f: 10,000 randomized events remain exact under duplicates and arbitrary order', () => {
     let seed = 0x5eed1234;
     const random = () => {
@@ -124,7 +142,7 @@ describe('E1 domain correctness', () => {
       return seed / 0x1_0000_0000;
     };
 
-    const base: PalletEvent[] = [];
+    const base: StoredEvent[] = [];
     const expectedBySort: Record<string, number> = {};
     let expectedTotal = 0;
     let expectedZugang = 0;
@@ -162,7 +180,7 @@ describe('E1 domain correctness', () => {
       if (art === 'INVENTUR') expectedInventur += delta;
     }
 
-    const noisy: PalletEvent[] = [];
+    const noisy: StoredEvent[] = [];
     for (const e of base) {
       noisy.push(e);
       if (random() < 0.35) noisy.push({ ...e });
