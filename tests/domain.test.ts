@@ -18,7 +18,7 @@ function event(
     art,
     delta,
     buchungszeit: '2026-09-23T10:00:00+02:00',
-    konfigVersion: 1,
+    konfigVersion: 'v1',
     syncState: 'CONFIRMED',
     createdLocalAt: '2026-09-23T10:00:00+02:00',
     ...overrides,
