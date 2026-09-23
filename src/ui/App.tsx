@@ -192,6 +192,10 @@ export function App() {
 
   return (
     <main className="app-shell" data-mode={mode.toLowerCase()} onPointerDown={onPagePointerDown} onPointerUp={onPagePointerUp}>
+      <div className="orientation-warning" role="status">
+        <strong>HOCHFORMAT VERWENDEN</strong>
+        <span>Für sicheres Zählen ist diese Ansicht auf Hochformat ausgelegt.</span>
+      </div>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">U</span>
