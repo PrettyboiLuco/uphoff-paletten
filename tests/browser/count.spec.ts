@@ -103,3 +103,17 @@ test('count and statistics pages fit without vertical document scrolling on targ
   );
   expect(statsOverflow).toBeLessThanOrEqual(1);
 });
+
+test('undo reverses the entire linked process atomically and survives reload', async ({ page }) => {
+  const row = page.locator('.pallet-row').first();
+
+  await row.locator('.stack-button').click();
+  await row.locator('.adjust-button').first().click();
+  await expect(row.locator('.row-stock strong')).toHaveText('14');
+
+  await page.getByRole('button', { name: 'RÜCKGÄNGIG' }).click();
+  await expect(row.locator('.row-stock strong')).toHaveText('0');
+
+  await page.reload();
+  await expect(page.locator('.pallet-row').first().locator('.row-stock strong')).toHaveText('0');
+});
