@@ -12,18 +12,29 @@
     "test:e23": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run tests/firestore.rules.test.ts\"",
     "test:e24": "vitest run tests/multiclient.test.ts",
     "test:e1": "vitest run tests/domain.test.ts",
-    "test:e3": "vitest run tests/statistics.test.ts tests/aggregates.test.ts"
+    "test:e3": "vitest run tests/statistics.test.ts tests/aggregates.test.ts",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:e4-unit": "vitest run tests/ui-logic.test.ts"
   },
   "dependencies": {
     "dexie": "^4.2.0",
     "firebase": "^12.3.0",
-    "@js-temporal/polyfill": "^0.5.1"
+    "@js-temporal/polyfill": "^0.5.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.2.2",
     "typescript": "^5.7.3",
     "vitest": "^3.2.4",
     "@firebase/rules-unit-testing": "^5.0.0",
-    "firebase-tools": "^14.16.0"
+    "firebase-tools": "^14.16.0",
+    "@vitejs/plugin-react": "^5.0.2",
+    "vite": "^7.1.7",
+    "vite-plugin-pwa": "^1.0.3",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9"
   }
 }
