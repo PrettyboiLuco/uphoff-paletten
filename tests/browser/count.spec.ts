@@ -76,3 +76,30 @@ test('page does not horizontally overflow', async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
+
+test('statistics screen uses the same durable events as counting', async ({ page }) => {
+  const row = page.locator('.pallet-row').first();
+
+  await row.locator('.stack-button').click();
+  await page.getByRole('button', { name: 'AUSGANG' }).click();
+  await row.locator('.stack-button').click();
+
+  await page.getByRole('button', { name: 'STATISTIK' }).click();
+
+  await expect(page.locator('.stat-hero strong')).toHaveText('15');
+  await expect(page.locator('.stats-grid div').nth(0).locator('strong')).toHaveText('0');
+  await expect(page.locator('.stats-grid div').nth(1).locator('strong')).toHaveText('15');
+});
+
+test('count and statistics pages fit without vertical document scrolling on target viewport', async ({ page }) => {
+  const countOverflow = await page.evaluate(
+    () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+  );
+  expect(countOverflow).toBeLessThanOrEqual(1);
+
+  await page.getByRole('button', { name: 'STATISTIK' }).click();
+  const statsOverflow = await page.evaluate(
+    () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+  );
+  expect(statsOverflow).toBeLessThanOrEqual(1);
+});
