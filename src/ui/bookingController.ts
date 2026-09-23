@@ -34,10 +34,20 @@ export class LocalBookingController {
   readonly db = new UphoffLocalDb(DB_NAME);
   private queue: Promise<void> = Promise.resolve();
   private activeProcess: ActiveProcess | null = null;
+  private deviceId = getDeviceId();
 
   async initialize() {
     await this.db.open();
     return loadProjection(this.db);
+  }
+
+  setDeviceId(deviceId: string): void {
+    this.deviceId = deviceId;
+    localStorage.setItem('uphoff-device-id', deviceId);
+  }
+
+  getDeviceId(): string {
+    return this.deviceId;
   }
 
   private processForTap(
@@ -86,7 +96,7 @@ export class LocalBookingController {
       );
       const event: StoredEvent = {
         id: crypto.randomUUID(),
-        geraetId: getDeviceId(),
+        geraetId: this.deviceId,
         sorte: pallet.id,
         art: mode === 'EINGANG' ? 'ZUGANG' : 'ABGANG',
         delta: effectForTap(mode, action, pallet.stackSize),
@@ -135,7 +145,7 @@ export class LocalBookingController {
 
         corrections.push({
           id,
-          geraetId: getDeviceId(),
+          geraetId: this.deviceId,
           sorte: original.sorte,
           art: 'KORREKTUR',
           delta: -original.delta,
