@@ -20,6 +20,7 @@ function immutableSignature(event: PalletEvent): string {
     vorgangId: event.vorgangId ?? null,
     korrigiertId: event.korrigiertId ?? null,
     umbuchungId: event.umbuchungId ?? null,
+    umbuchungPartnerId: event.umbuchungPartnerId ?? null,
   });
 }
 
