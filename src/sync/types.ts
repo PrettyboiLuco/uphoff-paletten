@@ -36,8 +36,14 @@ export interface RemoteEventStore {
   getEvent(id: string): Promise<PalletEvent | undefined>;
 }
 
+export interface RemoteCursor {
+  serverzeit: string;
+  id: string;
+}
+
 export interface RemoteReadableEventStore extends RemoteEventStore {
   listEvents(): Promise<PalletEvent[]>;
+  listEventsAfter?(cursor: RemoteCursor): Promise<PalletEvent[]>;
 }
 
 export type RemoteUnsubscribe = () => void;
@@ -46,5 +52,6 @@ export interface RemoteRealtimeEventStore extends RemoteReadableEventStore {
   subscribeEvents(
     onEvent: (event: PalletEvent) => void | Promise<void>,
     onError: (error: unknown) => void,
+    after?: RemoteCursor,
   ): RemoteUnsubscribe;
 }
