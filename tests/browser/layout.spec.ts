@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'LAYOUT' }).click();
+  await page.getByRole('button', { name: 'LAYOUT', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Layout bearbeiten' })).toBeVisible();
   await page.getByRole('button', { name: 'BEARBEITEN' }).click();
   await expect(page.getByRole('dialog', { name: 'Layout Editor' })).toBeVisible();
@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 test('requires explicit confirmation before editing', async ({ page }) => {
   // beforeEach has already confirmed; close and reopen to prove the guard returns.
   await page.getByRole('button', { name: 'Layout Editor schließen' }).click();
-  await page.getByRole('button', { name: 'LAYOUT' }).click();
+  await page.getByRole('button', { name: 'LAYOUT', exact: true }).click();
   await expect(page.getByRole('button', { name: 'BEARBEITEN' })).toBeVisible();
 });
 
@@ -70,7 +70,7 @@ test('cancel discards draft changes', async ({ page }) => {
   expect(changed!.width).toBeLessThan(before!.width);
 
   await page.getByRole('button', { name: 'ABBRECHEN' }).last().click();
-  await page.getByRole('button', { name: 'LAYOUT' }).click();
+  await page.getByRole('button', { name: 'LAYOUT', exact: true }).click();
   await page.getByRole('button', { name: 'BEARBEITEN' }).click();
 
   const reopened = await page.locator('[data-layout-id="TOTAL"]').boundingBox();
@@ -89,7 +89,7 @@ test('standard restores default layout after a custom save', async ({ page }) =>
   await page.mouse.up();
   await page.getByRole('button', { name: 'SPEICHERN' }).click();
 
-  await page.getByRole('button', { name: 'LAYOUT' }).click();
+  await page.getByRole('button', { name: 'LAYOUT', exact: true }).click();
   await page.getByRole('button', { name: 'BEARBEITEN' }).click();
   await page.getByRole('button', { name: 'STANDARD' }).click();
   await page.getByRole('button', { name: 'SPEICHERN' }).click();
