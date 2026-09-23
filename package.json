@@ -16,7 +16,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:e4-unit": "vitest run tests/ui-logic.test.ts"
+    "test:e4-unit": "vitest run tests/ui-logic.test.ts",
+    "test:e4": "vitest run tests/ui-logic.test.ts",
+    "test:e4-browser": "playwright test"
   },
   "dependencies": {
     "dexie": "^4.2.0",
@@ -35,6 +37,7 @@
     "vite": "^7.1.7",
     "vite-plugin-pwa": "^1.0.3",
     "@types/react": "^19.1.16",
-    "@types/react-dom": "^19.1.9"
+    "@types/react-dom": "^19.1.9",
+    "@playwright/test": "^1.55.0"
   }
 }
