@@ -18,7 +18,7 @@ function makeEvent(overrides: Partial<StoredEvent> = {}): StoredEvent {
     art: 'ZUGANG',
     delta: 15,
     buchungszeit: '2026-09-23T12:00:00+02:00',
-    konfigVersion: 1,
+    konfigVersion: 'v1',
     syncState: 'LOCAL_ONLY',
     createdLocalAt: '2026-09-23T12:00:00+02:00',
     ...overrides,
