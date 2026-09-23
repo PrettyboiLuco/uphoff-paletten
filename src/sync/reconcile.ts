@@ -4,7 +4,11 @@ import {
   type SyncConflict,
   UphoffLocalDb,
 } from '../persistence/localDb';
-import type { RemoteReadableEventStore } from './types';
+import type {
+  RemoteReadableEventStore,
+  RemoteRealtimeEventStore,
+  RemoteUnsubscribe,
+} from './types';
 import { runSyncPass, type SyncPassResult } from './syncEngine';
 
 const CLOCK_SKEW_MARK_MS = 10 * 60 * 1000;
@@ -34,6 +38,59 @@ function toConfirmedStoredEvent(
   return event;
 }
 
+export type ApplyRemoteResult =
+  | { status: 'ADDED' }
+  | { status: 'CONFIRMED_EXISTING' }
+  | { status: 'CONFLICT' };
+
+export async function applyRemoteEvent(
+  db: UphoffLocalDb,
+  remoteEvent: PalletEvent,
+  nowIso: string,
+): Promise<ApplyRemoteResult> {
+  return db.transaction(
+    'rw',
+    db.events,
+    db.outbox,
+    db.conflicts,
+    async () => {
+      const canonical = toConfirmedStoredEvent(remoteEvent, nowIso);
+      const existing = await db.events.get(remoteEvent.id);
+
+      if (!existing) {
+        await db.events.add(canonical);
+        return { status: 'ADDED' };
+      }
+
+      if (
+        immutableEventSignature(existing)
+        === immutableEventSignature(canonical)
+      ) {
+        await db.events.put({
+          ...canonical,
+          createdLocalAt: existing.createdLocalAt,
+        });
+        await db.outbox.delete(remoteEvent.id);
+        return { status: 'CONFIRMED_EXISTING' };
+      }
+
+      const conflict: SyncConflict = {
+        id: `conflict_${remoteEvent.id}`,
+        eventId: remoteEvent.id,
+        detectedAt: nowIso,
+        reason: 'ID_CONTENT_CONFLICT',
+        localEvent: existing,
+        remoteEvent: canonical,
+      };
+
+      await db.conflicts.put(conflict);
+      await db.events.put(canonical);
+      await db.outbox.delete(remoteEvent.id);
+      return { status: 'CONFLICT' };
+    },
+  );
+}
+
 export interface PullResult {
   added: number;
   confirmedExisting: number;
@@ -52,51 +109,14 @@ export async function pullRemoteEvents(
     conflicts: 0,
   };
 
-  await db.transaction(
-    'rw',
-    db.events,
-    db.outbox,
-    db.conflicts,
-    async () => {
-      for (const remoteEvent of remoteEvents) {
-        const canonical = toConfirmedStoredEvent(remoteEvent, nowIso);
-        const existing = await db.events.get(remoteEvent.id);
-
-        if (!existing) {
-          await db.events.add(canonical);
-          result.added += 1;
-          continue;
-        }
-
-        if (
-          immutableEventSignature(existing)
-          === immutableEventSignature(canonical)
-        ) {
-          await db.events.put({
-            ...canonical,
-            createdLocalAt: existing.createdLocalAt,
-          });
-          await db.outbox.delete(remoteEvent.id);
-          result.confirmedExisting += 1;
-          continue;
-        }
-
-        const conflict: SyncConflict = {
-          id: `conflict_${remoteEvent.id}`,
-          eventId: remoteEvent.id,
-          detectedAt: nowIso,
-          reason: 'ID_CONTENT_CONFLICT',
-          localEvent: existing,
-          remoteEvent: canonical,
-        };
-
-        await db.conflicts.put(conflict);
-        await db.events.put(canonical);
-        await db.outbox.delete(remoteEvent.id);
-        result.conflicts += 1;
-      }
-    },
-  );
+  for (const remoteEvent of remoteEvents) {
+    const applied = await applyRemoteEvent(db, remoteEvent, nowIso);
+    if (applied.status === 'ADDED') result.added += 1;
+    if (applied.status === 'CONFIRMED_EXISTING') {
+      result.confirmedExisting += 1;
+    }
+    if (applied.status === 'CONFLICT') result.conflicts += 1;
+  }
 
   return result;
 }
@@ -121,4 +141,18 @@ export async function runFullSync(
   });
 
   return { push, pull };
+}
+
+export function startRealtimeSync(
+  db: UphoffLocalDb,
+  remoteStore: RemoteRealtimeEventStore,
+  nowIso: () => string,
+  onError: (error: unknown) => void,
+): RemoteUnsubscribe {
+  return remoteStore.subscribeEvents(
+    async (event) => {
+      await applyRemoteEvent(db, event, nowIso());
+    },
+    onError,
+  );
 }
