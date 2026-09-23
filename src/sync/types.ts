@@ -35,3 +35,7 @@ export interface RemoteEventStore {
   createEvent(event: PalletEvent): Promise<RemoteCreateResult>;
   getEvent(id: string): Promise<PalletEvent | undefined>;
 }
+
+export interface RemoteReadableEventStore extends RemoteEventStore {
+  listEvents(): Promise<PalletEvent[]>;
+}
