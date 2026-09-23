@@ -1,5 +1,9 @@
 name: E2.4 Multi-Client Gate
 
+concurrency:
+  group: e2-4-multiclient-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:

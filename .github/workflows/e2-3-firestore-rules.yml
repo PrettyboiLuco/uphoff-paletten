@@ -1,5 +1,9 @@
 name: E2.3 Firestore Rules Gate
 
+concurrency:
+  group: e2-3-firestore-rules-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:

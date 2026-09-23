@@ -1,5 +1,9 @@
 name: E2.1 Persistence Gate
 
+concurrency:
+  group: e2-1-persistence-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:

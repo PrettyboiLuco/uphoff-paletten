@@ -1,5 +1,9 @@
 name: E2.2 Retry Gate
 
+concurrency:
+  group: e2-2-retry-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:

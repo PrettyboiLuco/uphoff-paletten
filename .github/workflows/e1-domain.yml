@@ -1,5 +1,9 @@
 name: E1 Domain Gate
 
+concurrency:
+  group: e1-domain-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:

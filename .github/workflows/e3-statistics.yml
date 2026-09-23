@@ -1,5 +1,9 @@
 name: E3 Statistics Gate
 
+concurrency:
+  group: e3-statistics-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
