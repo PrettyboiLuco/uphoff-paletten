@@ -138,6 +138,32 @@ describe('E3 statistics and calendar correctness', () => {
     expect(series.map((point) => point.bestand)).toEqual([100, 115, 100, 100]);
   });
 
+  it('keeps stock chart order-independent when correction and original share effective time', () => {
+    const original = event(
+      'chart-original',
+      'ZUGANG',
+      15,
+      '2026-09-10T08:00:00+02:00',
+    );
+    const correction = event(
+      'korr_chart-original',
+      'KORREKTUR',
+      -15,
+      '2026-09-20T08:00:00+02:00',
+      { korrigiertId: 'chart-original' },
+    );
+    const range = {
+      start: '2026-09-09T22:00:00Z',
+      end: '2026-09-10T22:00:00Z',
+    };
+
+    const a = stockSeries([original, correction], range);
+    const b = stockSeries([correction, original], range);
+
+    expect(a).toEqual(b);
+    expect(a.map((point) => point.bestand)).toEqual([0, 0, 0]);
+  });
+
   it('filters by sort without affecting other sorts', () => {
     const events = [
       event('euro', 'ZUGANG', 15, '2026-09-10T08:00:00+02:00'),
