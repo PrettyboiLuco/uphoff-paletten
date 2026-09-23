@@ -99,6 +99,32 @@ export function periodWindow(
   };
 }
 
+
+export function dayRangeForKey(dateKey: string): TimeRange {
+  const date = Temporal.PlainDate.from(dateKey);
+  const start = date.toZonedDateTime({
+    timeZone: BUSINESS_TIME_ZONE,
+    plainTime: Temporal.PlainTime.from('00:00'),
+  });
+  return toRange(start, start.add({ days: 1 }));
+}
+
+export function monthRangeForKey(monthKey: string): TimeRange {
+  const [yearText, monthText] = monthKey.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  if (!Number.isInteger(year) || !Number.isInteger(month)) {
+    throw new Error('invalid-month-key');
+  }
+
+  const first = Temporal.PlainDate.from({ year, month, day: 1 });
+  const start = first.toZonedDateTime({
+    timeZone: BUSINESS_TIME_ZONE,
+    plainTime: Temporal.PlainTime.from('00:00'),
+  });
+  return toRange(start, start.add({ months: 1 }));
+}
+
 export function berlinDateKey(iso: string): string {
   return Temporal.Instant.from(iso)
     .toZonedDateTimeISO(BUSINESS_TIME_ZONE)
