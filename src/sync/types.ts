@@ -39,3 +39,12 @@ export interface RemoteEventStore {
 export interface RemoteReadableEventStore extends RemoteEventStore {
   listEvents(): Promise<PalletEvent[]>;
 }
+
+export type RemoteUnsubscribe = () => void;
+
+export interface RemoteRealtimeEventStore extends RemoteReadableEventStore {
+  subscribeEvents(
+    onEvent: (event: PalletEvent) => void | Promise<void>,
+    onError: (error: unknown) => void,
+  ): RemoteUnsubscribe;
+}
