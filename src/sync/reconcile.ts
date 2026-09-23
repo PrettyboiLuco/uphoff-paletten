@@ -148,10 +148,12 @@ export function startRealtimeSync(
   remoteStore: RemoteRealtimeEventStore,
   nowIso: () => string,
   onError: (error: unknown) => void,
+  onApplied?: (result: ApplyRemoteResult, event: PalletEvent) => void | Promise<void>,
 ): RemoteUnsubscribe {
   return remoteStore.subscribeEvents(
     async (event) => {
-      await applyRemoteEvent(db, event, nowIso());
+      const result = await applyRemoteEvent(db, event, nowIso());
+      if (onApplied) await onApplied(result, event);
     },
     onError,
   );
