@@ -6,7 +6,7 @@ Stand: 2026-09-23
 1. Firebase-Projekt anlegen.
 2. Web-App registrieren.
 3. Firestore-Datenbank aktivieren.
-4. Authentication -> Sign-in method -> **Anonymous** aktivieren.
+4. Authentication -> Sign-in method -> **Anonymous** aktivieren. Für diese gerätegebundenen IDs **keine automatische Bereinigung alter anonymer Konten aktivieren**, solange diese IDs als dauerhafte Gerätefreigabe verwendet werden.
 5. Firestore Security Rules aus `firestore.rules` deployen.
 6. Web-App-Konfiguration in die fünf `VITE_...` Variablen der Hosting-Umgebung eintragen.
 
