@@ -156,6 +156,69 @@ describe('E6 backup, self-test and operations', () => {
     await target.close();
   });
 
+  it('rejects a structurally valid-looking backup with an unknown event type', async () => {
+    const target = db('e6-invalid-art');
+    const malformed = {
+      manifest: {
+        schemaVersion: 1,
+        exportedAt: '2026-09-23T12:00:00Z',
+        app: 'uphoff-paletten',
+        eventCount: 1,
+        outboxCount: 0,
+        conflictCount: 0,
+      },
+      events: [
+        {
+          id: 'bad-art',
+          geraetId: 'ipad',
+          sorte: 'EURO',
+          art: 'MAGIC',
+          delta: 999,
+          buchungszeit: '2026-09-23T10:00:00Z',
+          konfigVersion: 'v1',
+          syncState: 'CONFIRMED',
+          createdLocalAt: '2026-09-23T10:00:00Z',
+        },
+      ],
+      outbox: [],
+      conflicts: [],
+    };
+
+    await expect(
+      restoreJsonBackup(target, JSON.stringify(malformed)),
+    ).rejects.toThrow('invalid-backup-events');
+
+    expect(await target.events.count()).toBe(0);
+    await target.close();
+  });
+
+  it('rejects backup manifest counts that do not match the actual payload', async () => {
+    const target = db('e6-manifest-mismatch');
+    const malformed = {
+      manifest: {
+        schemaVersion: 1,
+        exportedAt: '2026-09-23T12:00:00Z',
+        app: 'uphoff-paletten',
+        eventCount: 2,
+        outboxCount: 0,
+        conflictCount: 0,
+      },
+      events: [
+        event('only-one', 15),
+      ],
+      outbox: [],
+      conflicts: [],
+    };
+
+    await expect(
+      restoreJsonBackup(target, JSON.stringify(malformed)),
+    ).rejects.toThrow('backup-manifest-count-mismatch');
+
+    expect(await target.events.count()).toBe(0);
+    await target.close();
+  });
+
+
   it('creates semicolon CSV with escaped user-visible values', async () => {
     const database = db('e6-csv');
     await database.events.add(
