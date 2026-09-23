@@ -8,14 +8,19 @@
     "test:watch": "vitest",
     "test:e21": "vitest run tests/persistence.test.ts",
     "typecheck": "tsc --noEmit",
-    "test:e22": "vitest run tests/outbox.test.ts"
+    "test:e22": "vitest run tests/outbox.test.ts",
+    "test:e23": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run tests/firestore.rules.test.ts\"",
+    "test:e24": "vitest run tests/multiclient.test.ts"
   },
   "dependencies": {
-    "dexie": "^4.2.0"
+    "dexie": "^4.2.0",
+    "firebase": "^12.3.0"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.2.2",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "firebase-tools": "^14.16.0"
   }
 }
