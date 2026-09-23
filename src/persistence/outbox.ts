@@ -107,3 +107,46 @@ export async function scheduleRetry(
     nextAttemptAt: now + delayMs,
   });
 }
+
+export type BatchQueueResult =
+  | { status: 'QUEUED'; events: StoredEvent[] }
+  | { status: 'ALREADY_QUEUED'; events: StoredEvent[] }
+  | { status: 'CONFLICT'; existing: StoredEvent; incoming: StoredEvent };
+
+export async function persistAndQueueEvents(
+  db: UphoffLocalDb,
+  incomingEvents: readonly StoredEvent[],
+  now: number,
+): Promise<BatchQueueResult> {
+  return db.transaction('rw', db.events, db.outbox, async () => {
+    const toInsert: StoredEvent[] = [];
+
+    for (const incoming of incomingEvents) {
+      const existing = await db.events.get(incoming.id);
+      if (!existing) {
+        toInsert.push({ ...incoming, syncState: 'PENDING' });
+        continue;
+      }
+
+      if (immutableEventSignature(existing) !== immutableEventSignature(incoming)) {
+        return { status: 'CONFLICT', existing, incoming };
+      }
+    }
+
+    if (toInsert.length === 0) {
+      return { status: 'ALREADY_QUEUED', events: [] };
+    }
+
+    for (const event of toInsert) {
+      await db.events.add(event);
+      await db.outbox.put({
+        eventId: event.id,
+        status: 'READY',
+        attemptCount: 0,
+        nextAttemptAt: now,
+      });
+    }
+
+    return { status: 'QUEUED', events: toInsert };
+  });
+}
