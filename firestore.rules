@@ -43,8 +43,7 @@ service cloud.firestore {
         'vorgangId',
         'korrigiertId',
         'umbuchungId',
-        'umbuchungPartnerId',
-        'clockSkewFlag'
+        'umbuchungPartnerId'
       ];
     }
 
