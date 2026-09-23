@@ -1,0 +1,21 @@
+name: E1 Domain Gate
+
+on:
+  push:
+    branches:
+      - build/pwa-v1
+  pull_request:
+
+jobs:
+  domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm test
