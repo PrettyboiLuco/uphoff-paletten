@@ -35,6 +35,7 @@ export interface FirebaseRuntime {
 }
 
 let runtimePromise: Promise<FirebaseRuntime> | null = null;
+let appCheckInitialized = false;
 
 function env(name: string): string | undefined {
   const value = import.meta.env[name] as string | undefined;
@@ -83,11 +84,12 @@ async function initializeRuntime(): Promise<FirebaseRuntime> {
   }
 
   const appCheckKey = env('VITE_RECAPTCHA_ENTERPRISE_SITE_KEY');
-  if (appCheckKey) {
+  if (appCheckKey && !appCheckInitialized) {
     initializeAppCheck(app, {
       provider: new ReCaptchaEnterpriseProvider(appCheckKey),
       isTokenAutoRefreshEnabled: true,
     });
+    appCheckInitialized = true;
   }
 
   const auth = getAuth(app);
