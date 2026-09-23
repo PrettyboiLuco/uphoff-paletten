@@ -4,11 +4,12 @@ import type { PalletEvent, StoredEvent } from '../src/domain/types';
 import { UphoffLocalDb, listEvents, loadProjection } from '../src/persistence/localDb';
 import { persistAndQueueEvent } from '../src/persistence/outbox';
 import { computeCheckCode, getSyncHealth } from '../src/sync/health';
-import { runFullSync } from '../src/sync/reconcile';
+import { runFullSync, startRealtimeSync } from '../src/sync/reconcile';
 import {
   RemoteCreateError,
   type RemoteCreateResult,
-  type RemoteReadableEventStore,
+  type RemoteRealtimeEventStore,
+  type RemoteUnsubscribe,
 } from '../src/sync/types';
 
 const dbNames: string[] = [];
@@ -37,9 +38,13 @@ function event(
   };
 }
 
-class SharedRemote implements RemoteReadableEventStore {
+class SharedRemote implements RemoteRealtimeEventStore {
   readonly events = new Map<string, PalletEvent>();
   readonly loseConfirmationOnce = new Set<string>();
+  private readonly subscribers = new Set<{
+    onEvent: (event: PalletEvent) => void | Promise<void>;
+    onError: (error: unknown) => void;
+  }>();
   reverseReads = false;
   serverClockIso = '2026-09-23T10:00:01.000Z';
 
@@ -48,10 +53,19 @@ class SharedRemote implements RemoteReadableEventStore {
       throw new RemoteCreateError('ALREADY_EXISTS', 'exists');
     }
 
-    this.events.set(input.id, {
+    const stored = {
       ...input,
       serverzeit: this.serverClockIso,
-    });
+    };
+    this.events.set(input.id, stored);
+
+    for (const subscriber of this.subscribers) {
+      try {
+        await subscriber.onEvent({ ...stored });
+      } catch (error) {
+        subscriber.onError(error);
+      }
+    }
 
     if (this.loseConfirmationOnce.delete(input.id)) {
       throw new RemoteCreateError('TRANSIENT', 'confirmation-lost');
@@ -68,6 +82,17 @@ class SharedRemote implements RemoteReadableEventStore {
     const result = [...this.events.values()].map((item) => ({ ...item }));
     return this.reverseReads ? result.reverse() : result;
   }
+
+  subscribeEvents(
+    onEvent: (event: PalletEvent) => void | Promise<void>,
+    onError: (error: unknown) => void,
+  ): RemoteUnsubscribe {
+    const subscriber = { onEvent, onError };
+    this.subscribers.add(subscriber);
+    return () => {
+      this.subscribers.delete(subscriber);
+    };
+  }
 }
 
 afterEach(async () => {
@@ -78,6 +103,39 @@ afterEach(async () => {
 });
 
 describe('E2.4 multi-client convergence and fault injection', () => {
+  it('delivers a foreign booking automatically to a subscribed device without a manual refresh', async () => {
+    const remote = new SharedRemote();
+    const phoneA = db('e24-realtime-a');
+    const phoneB = db('e24-realtime-b');
+    const errors: unknown[] = [];
+
+    const unsubscribe = startRealtimeSync(
+      phoneB,
+      remote,
+      () => '2026-09-23T10:00:02Z',
+      (error) => errors.push(error),
+    );
+
+    await persistAndQueueEvent(
+      phoneA,
+      event('realtime-1', 'phone-a', 15),
+      1000,
+    );
+    await runFullSync(
+      phoneA,
+      remote,
+      1000,
+      '2026-09-23T10:00:01Z',
+    );
+
+    const received = await phoneB.events.get('realtime-1');
+    expect(received?.syncState).toBe('CONFIRMED');
+    expect(received?.delta).toBe(15);
+    expect(errors).toEqual([]);
+
+    unsubscribe();
+  });
+
   it('converges three independent clients after simultaneous bookings', async () => {
     const remote = new SharedRemote();
     const ipad = db('e24-ipad');
