@@ -1,0 +1,24 @@
+name: E6 Operations Gate
+
+concurrency:
+  group: e6-operations-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - build/pwa-v1
+  pull_request:
+
+jobs:
+  operations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm run test:e6
