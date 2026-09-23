@@ -19,7 +19,6 @@ export function App() {
   const [syncState, setSyncState] = useState<'SYNCHRON' | 'PENDING' | 'REJECTED' | 'NEVER_SYNCED'>('NEVER_SYNCED');
   const [pendingCount, setPendingCount] = useState(0);
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
-  const [bookingBusy, setBookingBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,13 +55,10 @@ export function App() {
     action: BookingAction,
     stackSize: number,
   ) => {
-    if (bookingBusy) return;
-
     const pallet = PALLET_TYPES.find((item) => item.id === palletId);
     const controller = controllerRef.current;
     if (!pallet || !controller || pallet.stackSize !== stackSize) return;
 
-    setBookingBusy(true);
     setError(null);
 
     try {
@@ -78,8 +74,6 @@ export function App() {
       });
     } catch {
       setError('Buchung wurde nicht gespeichert. Bitte erneut versuchen.');
-    } finally {
-      setBookingBusy(false);
     }
   };
 
@@ -114,7 +108,6 @@ export function App() {
                 key={value}
                 className={mode === value ? 'active' : ''}
                 onClick={() => setMode(value)}
-                disabled={bookingBusy}
               >
                 {value}
               </button>
@@ -136,8 +129,7 @@ export function App() {
                 <button
                   className="stack-button"
                   onClick={() => void book(type.id, 'STACK', type.stackSize)}
-                  disabled={bookingBusy}
-                  aria-label={`${type.name} Stapel buchen`}
+                    aria-label={`${type.name} Stapel buchen`}
                 >
                   <span>{mode === 'EINGANG' ? '+' : '−'}{type.stackSize}</span>
                   <small>STAPEL</small>
@@ -145,16 +137,14 @@ export function App() {
                 <button
                   className="adjust-button"
                   onClick={() => void book(type.id, 'MINUS_ONE', type.stackSize)}
-                  disabled={bookingBusy}
-                  aria-label={`${type.name} minus eins`}
+                    aria-label={`${type.name} minus eins`}
                 >
                   −1
                 </button>
                 <button
                   className="adjust-button"
                   onClick={() => void book(type.id, 'PLUS_ONE', type.stackSize)}
-                  disabled={bookingBusy}
-                  aria-label={`${type.name} plus eins`}
+                    aria-label={`${type.name} plus eins`}
                 >
                   +1
                 </button>
