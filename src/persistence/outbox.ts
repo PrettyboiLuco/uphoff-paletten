@@ -21,7 +21,9 @@ export async function persistAndQueueEvent(
       }
 
       const outbox = await db.outbox.get(incoming.id);
-      return { status: 'ALREADY_QUEUED', event: existing, outbox };
+      return outbox
+        ? { status: 'ALREADY_QUEUED', event: existing, outbox }
+        : { status: 'ALREADY_QUEUED', event: existing };
     }
 
     const event: StoredEvent = { ...incoming, syncState: 'PENDING' };
