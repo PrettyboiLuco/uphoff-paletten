@@ -87,6 +87,7 @@ export function App() {
     'SYNCHRON' | 'PENDING' | 'REJECTED' | 'NEVER_SYNCED'
   >('NEVER_SYNCED');
   const [pendingCount, setPendingCount] = useState(0);
+  const [lastRetryError, setLastRetryError] = useState<string | null>(null);
   const [backendState, setBackendState] = useState<BackendState>('INITIALIZING');
   const [backendUid, setBackendUid] = useState<string | null>(null);
   const [bookingReady, setBookingReady] = useState(false);
@@ -136,6 +137,7 @@ export function App() {
     setStocks(projection.bestandJeSorte);
     setPendingCount(health.pendingCount);
     setSyncState(health.state);
+    setLastRetryError(health.lastRetryError ?? null);
     await refreshStatistics(controller);
   };
 
@@ -458,6 +460,8 @@ export function App() {
       : `${outgoingChange >= 0 ? '+' : ''}${Math.round(outgoingChange)} % zur Vorperiode`;
 
   const syncDisplay = (() => {
+    if (lastRetryError === 'QUOTA_EXHAUSTED') return 'Kontingent erreicht';
+    if (lastRetryError === 'UNAUTHENTICATED') return 'Anmeldung prüfen';
     if (backendState === 'INITIALIZING') return 'Verbinde …';
     if (backendState === 'NOT_CONFIGURED') {
       return pendingCount > 0 ? `Nur lokal · ${pendingCount} ausstehend` : 'Nur lokal';
@@ -475,9 +479,13 @@ export function App() {
   })();
 
   const syncTone =
-    backendState === 'ACTIVE'
-      ? syncState.toLowerCase()
-      : backendState.toLowerCase();
+    lastRetryError === 'QUOTA_EXHAUSTED'
+      ? 'quota'
+      : lastRetryError === 'UNAUTHENTICATED'
+        ? 'error'
+        : backendState === 'ACTIVE'
+          ? syncState.toLowerCase()
+          : backendState.toLowerCase();
 
   return (
     <main
