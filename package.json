@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run tests/domain.test.ts tests/persistence.test.ts tests/outbox.test.ts tests/multiclient.test.ts",
     "test:watch": "vitest",
     "test:e21": "vitest run tests/persistence.test.ts",
     "typecheck": "tsc --noEmit",
     "test:e22": "vitest run tests/outbox.test.ts",
     "test:e23": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run tests/firestore.rules.test.ts\"",
-    "test:e24": "vitest run tests/multiclient.test.ts"
+    "test:e24": "vitest run tests/multiclient.test.ts",
+    "test:e1": "vitest run tests/domain.test.ts"
   },
   "dependencies": {
     "dexie": "^4.2.0",
