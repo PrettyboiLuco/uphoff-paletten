@@ -1,11 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import 'fake-indexeddb/auto';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../src/domain/types';
+import { UphoffLocalDb } from '../src/persistence/localDb';
+import { IndexedDbAggregateStore } from '../src/persistence/aggregateStore';
 import {
   aggregatesMatchRaw,
   appendAggregateRevision,
   type AggregateRevision,
   type AggregateStore,
 } from '../src/statistics/aggregates';
+
+const dbNames: string[] = [];
 
 class MemoryAggregateStore implements AggregateStore {
   readonly revisions: AggregateRevision[] = [];
@@ -46,6 +51,41 @@ function event(
     ...overrides,
   };
 }
+
+afterEach(async () => {
+  for (const name of dbNames.splice(0)) {
+    const database = new UphoffLocalDb(name);
+    await database.delete();
+  }
+  it('persists aggregate revisions across IndexedDB reopen', async () => {
+    const name = 'e3-aggregate-persistence';
+    dbNames.push(name);
+    let database = new UphoffLocalDb(name);
+    let store = new IndexedDbAggregateStore(database);
+    const events = [
+      event('persist-a', 'ZUGANG', 15, '2026-09-10T08:00:00+02:00'),
+    ];
+
+    await appendAggregateRevision(
+      store,
+      'MONTH',
+      '2026-09',
+      september,
+      events,
+      '2026-10-01T00:00:00Z',
+    );
+    await database.close();
+
+    database = new UphoffLocalDb(name);
+    store = new IndexedDbAggregateStore(database);
+    const revisions = await store.list('MONTH', '2026-09');
+
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]?.revision).toBe(1);
+    expect(revisions[0]?.stats.dazugekommen).toBe(15);
+    await database.close();
+  });
+});
 
 const september = {
   start: '2026-08-31T22:00:00Z',
