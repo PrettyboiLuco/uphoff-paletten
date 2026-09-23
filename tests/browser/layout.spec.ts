@@ -47,6 +47,7 @@ test('resize, save, reopen and apply custom width to the live count screen', asy
   expect(heroBox!.width).toBeLessThan(shellBox!.width);
 
   await page.reload();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-layout-ready', 'true');
   const reloadedHero = await page.locator('.hero-total').boundingBox();
   const reloadedShell = await page.locator('.count-page').boundingBox();
   expect(reloadedHero!.width).toBeLessThan(reloadedShell!.width);
