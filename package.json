@@ -20,7 +20,8 @@
     "test:e4": "vitest run tests/ui-logic.test.ts",
     "test:e4-browser": "playwright test tests/browser/count.spec.ts",
     "test:e5": "vitest run tests/layout.test.ts",
-    "test:e5-browser": "playwright test tests/browser/layout.spec.ts"
+    "test:e5-browser": "playwright test tests/browser/layout.spec.ts",
+    "test:e6": "vitest run tests/ops.test.ts"
   },
   "dependencies": {
     "dexie": "^4.2.0",
