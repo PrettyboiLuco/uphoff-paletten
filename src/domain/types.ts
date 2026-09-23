@@ -17,7 +17,7 @@ export interface PalletEvent {
   delta: number;
   buchungszeit: string;
   serverzeit?: string;
-  konfigVersion: number;
+  konfigVersion: string;
   vorgangId?: string;
   korrigiertId?: string;
   umbuchungId?: string;
