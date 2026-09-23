@@ -5,6 +5,7 @@ import {
   UphoffLocalDb,
 } from '../persistence/localDb';
 import type {
+  RemoteCursor,
   RemoteReadableEventStore,
   RemoteRealtimeEventStore,
   RemoteUnsubscribe,
@@ -12,6 +13,7 @@ import type {
 import { runSyncPass, type SyncPassResult } from './syncEngine';
 
 const CLOCK_SKEW_MARK_MS = 10 * 60 * 1000;
+const REMOTE_CURSOR_KEY = 'remoteCursor:v1';
 
 function toConfirmedStoredEvent(
   remote: PalletEvent,
@@ -36,6 +38,67 @@ function toConfirmedStoredEvent(
   }
 
   return event;
+}
+
+function cursorForEvent(event: PalletEvent): RemoteCursor | undefined {
+  if (!event.serverzeit) return undefined;
+  return {
+    serverzeit: event.serverzeit,
+    id: event.id,
+  };
+}
+
+function compareCursor(a: RemoteCursor, b: RemoteCursor): number {
+  const aMs = Date.parse(a.serverzeit);
+  const bMs = Date.parse(b.serverzeit);
+
+  if (aMs !== bMs) return aMs - bMs;
+
+  // If JavaScript Date precision is equal, the exact RFC3339 fraction still
+  // sorts lexicographically because both timestamps are normalized UTC strings.
+  if (a.serverzeit !== b.serverzeit) {
+    return a.serverzeit.localeCompare(b.serverzeit);
+  }
+
+  return a.id.localeCompare(b.id);
+}
+
+export async function loadRemoteCursor(
+  db: UphoffLocalDb,
+): Promise<RemoteCursor | undefined> {
+  const stored = await db.meta.get(REMOTE_CURSOR_KEY);
+  if (!stored) return undefined;
+
+  try {
+    const parsed = JSON.parse(stored.value) as Partial<RemoteCursor>;
+    if (
+      typeof parsed.serverzeit !== 'string'
+      || typeof parsed.id !== 'string'
+      || !Number.isFinite(Date.parse(parsed.serverzeit))
+    ) {
+      return undefined;
+    }
+
+    return {
+      serverzeit: parsed.serverzeit,
+      id: parsed.id,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function saveRemoteCursor(
+  db: UphoffLocalDb,
+  candidate: RemoteCursor,
+): Promise<void> {
+  const existing = await loadRemoteCursor(db);
+  if (existing && compareCursor(existing, candidate) >= 0) return;
+
+  await db.meta.put({
+    key: REMOTE_CURSOR_KEY,
+    value: JSON.stringify(candidate),
+  });
 }
 
 export type ApplyRemoteResult =
@@ -102,20 +165,37 @@ export async function pullRemoteEvents(
   remoteStore: RemoteReadableEventStore,
   nowIso: string,
 ): Promise<PullResult> {
-  const remoteEvents = await remoteStore.listEvents();
+  const cursor = await loadRemoteCursor(db);
+  const remoteEvents =
+    cursor && remoteStore.listEventsAfter
+      ? await remoteStore.listEventsAfter(cursor)
+      : await remoteStore.listEvents();
+
+  const ordered = [...remoteEvents].sort((a, b) => {
+    const aCursor = cursorForEvent(a);
+    const bCursor = cursorForEvent(b);
+    if (!aCursor && !bCursor) return a.id.localeCompare(b.id);
+    if (!aCursor) return -1;
+    if (!bCursor) return 1;
+    return compareCursor(aCursor, bCursor);
+  });
+
   const result: PullResult = {
     added: 0,
     confirmedExisting: 0,
     conflicts: 0,
   };
 
-  for (const remoteEvent of remoteEvents) {
+  for (const remoteEvent of ordered) {
     const applied = await applyRemoteEvent(db, remoteEvent, nowIso);
     if (applied.status === 'ADDED') result.added += 1;
     if (applied.status === 'CONFIRMED_EXISTING') {
       result.confirmedExisting += 1;
     }
     if (applied.status === 'CONFLICT') result.conflicts += 1;
+
+    const nextCursor = cursorForEvent(remoteEvent);
+    if (nextCursor) await saveRemoteCursor(db, nextCursor);
   }
 
   return result;
@@ -143,18 +223,26 @@ export async function runFullSync(
   return { push, pull };
 }
 
-export function startRealtimeSync(
+export async function startRealtimeSync(
   db: UphoffLocalDb,
   remoteStore: RemoteRealtimeEventStore,
   nowIso: () => string,
   onError: (error: unknown) => void,
-  onApplied?: (result: ApplyRemoteResult, event: PalletEvent) => void | Promise<void>,
-): RemoteUnsubscribe {
+  onApplied?: (
+    result: ApplyRemoteResult,
+    event: PalletEvent,
+  ) => void | Promise<void>,
+): Promise<RemoteUnsubscribe> {
+  const cursor = await loadRemoteCursor(db);
+
   return remoteStore.subscribeEvents(
     async (event) => {
       const result = await applyRemoteEvent(db, event, nowIso());
+      const nextCursor = cursorForEvent(event);
+      if (nextCursor) await saveRemoteCursor(db, nextCursor);
       if (onApplied) await onApplied(result, event);
     },
     onError,
+    cursor,
   );
 }
