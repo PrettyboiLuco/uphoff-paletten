@@ -89,6 +89,7 @@ export function App() {
   const [pendingCount, setPendingCount] = useState(0);
   const [backendState, setBackendState] = useState<BackendState>('INITIALIZING');
   const [backendUid, setBackendUid] = useState<string | null>(null);
+  const [bookingReady, setBookingReady] = useState(false);
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<StatisticsPeriodKind>('TODAY');
@@ -259,11 +260,13 @@ export function App() {
 
         if (runtime.status === 'NOT_CONFIGURED') {
           setBackendState('NOT_CONFIGURED');
+          setBookingReady(true);
           return;
         }
 
         if (runtime.status === 'AWAITING_APPROVAL') {
           setBackendState('AWAITING_APPROVAL');
+          setBookingReady(Boolean(runtime.uid));
           return;
         }
 
@@ -299,6 +302,7 @@ export function App() {
         }
 
         remoteRef.current = runtime.remote;
+        setBookingReady(true);
         setBackendState(navigator.onLine ? 'ACTIVE' : 'OFFLINE');
 
         await fullSync(controller);
@@ -481,6 +485,7 @@ export function App() {
       data-mode={mode.toLowerCase()}
       data-layout-ready={layoutReady ? 'true' : 'false'}
       data-backend-state={backendState.toLowerCase()}
+      data-booking-ready={bookingReady ? 'true' : 'false'}
       onPointerDown={onPagePointerDown}
       onPointerUp={onPagePointerUp}
     >
@@ -536,6 +541,12 @@ export function App() {
         </div>
       )}
 
+      {!bookingReady && backendState !== 'NOT_CONFIGURED' && (
+        <div className="cloud-banner" role="status">
+          Buchungen werden freigegeben, sobald die Geräte-ID sicher feststeht.
+        </div>
+      )}
+
       {error && (
         <div className="error-banner" role="alert">
           {error}
@@ -585,6 +596,7 @@ export function App() {
                   onClick={() =>
                     void book(type.id, 'STACK', type.stackSize)
                   }
+                  disabled={!bookingReady}
                   aria-label={`${type.name} Stapel buchen`}
                 >
                   <span>
@@ -598,6 +610,7 @@ export function App() {
                   onClick={() =>
                     void book(type.id, 'MINUS_ONE', type.stackSize)
                   }
+                  disabled={!bookingReady}
                   aria-label={`${type.name} minus eins`}
                 >
                   −1
@@ -607,6 +620,7 @@ export function App() {
                   onClick={() =>
                     void book(type.id, 'PLUS_ONE', type.stackSize)
                   }
+                  disabled={!bookingReady}
                   aria-label={`${type.name} plus eins`}
                 >
                   +1
