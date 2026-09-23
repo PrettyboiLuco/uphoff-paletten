@@ -119,12 +119,32 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .last-action button { min-height: 38px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 800; }
 
 .stats-page { display: grid; gap: 10px; padding-top: 12px; }
+.period-switch {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px;
+  border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.025);
+}
+.period-switch button {
+  min-height: 42px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .06em;
+}
+.period-switch button.active { background: rgba(255,255,255,.08); color: var(--text); }
+
+.filter-row {
+  min-height: 48px; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 0 12px; border: 1px solid var(--line); border-radius: 13px;
+  background: var(--panel);
+}
+.filter-row label { color: var(--muted); font-size: 9px; letter-spacing: .12em; font-weight: 800; }
+.filter-row select {
+  min-height: 36px; max-width: 65%; border: 1px solid var(--line); border-radius: 9px;
+  background: #101318; color: var(--text); padding: 0 10px; font: inherit; font-size: 11px;
+}
 .stat-hero { min-height: 180px; border: 1px solid rgba(255,101,101,.25); border-radius: 18px; padding: 18px; background: rgba(255,101,101,.06); display: grid; align-content: center; }
 .stat-hero span { color: var(--outgoing); font-size: 10px; letter-spacing: .14em; }
 .stat-hero strong { font-size: 72px; line-height: 1; }
 .stat-hero small { color: var(--muted); }
-.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.stats-grid div, .chart-placeholder { border: 1px solid var(--line); border-radius: 15px; background: var(--panel); padding: 14px; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stats-grid div, .chart-placeholder, .bar-chart { border: 1px solid var(--line); border-radius: 15px; background: var(--panel); padding: 14px; }
 .stats-grid div { display: grid; gap: 8px; }
 .stats-grid span { color: var(--muted); font-size: 10px; }
 .stats-grid strong { font-size: 28px; }
@@ -179,3 +199,16 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 }
 
 button:disabled { opacity: .48; cursor: default; }
+
+.bar-chart { display: grid; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: minmax(70px, 120px) 1fr 36px; gap: 9px; align-items: center; min-height: 28px; }
+.bar-row > span { color: #c8cdd2; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-row > strong { text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+.bar-track { height: 8px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.07); }
+.bar-fill { height: 100%; min-width: 0; border-radius: inherit; background: var(--outgoing); }
+
+@media (max-width: 420px) {
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .stats-grid div:last-child { grid-column: 1 / -1; }
+  .period-switch button { font-size: 8px; padding: 0 3px; }
+}
