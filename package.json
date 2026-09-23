@@ -18,8 +18,9 @@
     "preview": "vite preview",
     "test:e4-unit": "vitest run tests/ui-logic.test.ts",
     "test:e4": "vitest run tests/ui-logic.test.ts",
-    "test:e4-browser": "playwright test",
-    "test:e5": "vitest run tests/layout.test.ts"
+    "test:e4-browser": "playwright test tests/browser/count.spec.ts",
+    "test:e5": "vitest run tests/layout.test.ts",
+    "test:e5-browser": "playwright test tests/browser/layout.spec.ts"
   },
   "dependencies": {
     "dexie": "^4.2.0",
