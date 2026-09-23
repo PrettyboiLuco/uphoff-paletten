@@ -2,11 +2,15 @@ import { FirebaseError } from 'firebase/app';
 import {
   collection,
   doc,
+  documentId,
   getDoc,
   getDocs,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
+  startAfter,
   Timestamp,
   type Firestore,
 } from 'firebase/firestore';
@@ -14,6 +18,7 @@ import type { PalletEvent } from '../domain/types';
 import {
   RemoteCreateError,
   type RemoteCreateResult,
+  type RemoteCursor,
   type RemoteRealtimeEventStore,
   type RemoteUnsubscribe,
 } from './types';
@@ -130,16 +135,48 @@ export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {
   }
 
   async listEvents(): Promise<PalletEvent[]> {
-    const snapshot = await getDocs(collection(this.db, 'events'));
+    const snapshot = await getDocs(
+      query(
+        collection(this.db, 'events'),
+        orderBy('serverzeit', 'asc'),
+        orderBy(documentId(), 'asc'),
+      ),
+    );
+    return snapshot.docs.map((item) => fromFirestoreEvent(item.data()));
+  }
+
+  async listEventsAfter(cursor: RemoteCursor): Promise<PalletEvent[]> {
+    const snapshot = await getDocs(
+      query(
+        collection(this.db, 'events'),
+        orderBy('serverzeit', 'asc'),
+        orderBy(documentId(), 'asc'),
+        startAfter(Timestamp.fromDate(new Date(cursor.serverzeit)), cursor.id),
+      ),
+    );
     return snapshot.docs.map((item) => fromFirestoreEvent(item.data()));
   }
 
   subscribeEvents(
     onEvent: (event: PalletEvent) => void | Promise<void>,
     onError: (error: unknown) => void,
+    after?: RemoteCursor,
   ): RemoteUnsubscribe {
+    const source = after
+      ? query(
+          collection(this.db, 'events'),
+          orderBy('serverzeit', 'asc'),
+          orderBy(documentId(), 'asc'),
+          startAfter(Timestamp.fromDate(new Date(after.serverzeit)), after.id),
+        )
+      : query(
+          collection(this.db, 'events'),
+          orderBy('serverzeit', 'asc'),
+          orderBy(documentId(), 'asc'),
+        );
+
     return onSnapshot(
-      collection(this.db, 'events'),
+      source,
       (snapshot) => {
         for (const change of snapshot.docChanges()) {
           if (change.type !== 'added') continue;
