@@ -104,15 +104,15 @@ service cloud.firestore {
     }
 
     function validCorrection(eventId) {
-      let originalId = request.resource.data.korrigiertId;
-      let original = get(originalPath(originalId)).data;
       return request.resource.data.art == 'KORREKTUR'
         && request.resource.data.keys().hasAll(['korrigiertId'])
-        && exists(originalPath(originalId))
-        && eventId == 'korr_' + originalId
-        && original.art != 'KORREKTUR'
-        && request.resource.data.sorte == original.sorte
-        && request.resource.data.delta == -original.delta;
+        && exists(originalPath(request.resource.data.korrigiertId))
+        && eventId == 'korr_' + request.resource.data.korrigiertId
+        && get(originalPath(request.resource.data.korrigiertId)).data.art != 'KORREKTUR'
+        && request.resource.data.sorte
+          == get(originalPath(request.resource.data.korrigiertId)).data.sorte
+        && request.resource.data.delta
+          == -get(originalPath(request.resource.data.korrigiertId)).data.delta;
     }
 
     function validAdminAdjustment() {
@@ -128,18 +128,18 @@ service cloud.firestore {
     }
 
     function validTransfer(eventId) {
-      let partner = getAfter(transferPartnerPath()).data;
       return isAdmin()
         && request.resource.data.art == 'UMBUCHUNG'
         && request.resource.data.keys().hasAll(['umbuchungId', 'umbuchungPartnerId'])
         && request.resource.data.umbuchungPartnerId != eventId
         && existsAfter(transferPartnerPath())
-        && partner.art == 'UMBUCHUNG'
-        && partner.umbuchungId == request.resource.data.umbuchungId
-        && partner.umbuchungPartnerId == eventId
-        && partner.geraetId == request.auth.uid
-        && partner.sorte != request.resource.data.sorte
-        && partner.delta + request.resource.data.delta == 0;
+        && getAfter(transferPartnerPath()).data.art == 'UMBUCHUNG'
+        && getAfter(transferPartnerPath()).data.umbuchungId
+          == request.resource.data.umbuchungId
+        && getAfter(transferPartnerPath()).data.umbuchungPartnerId == eventId
+        && getAfter(transferPartnerPath()).data.geraetId == request.auth.uid
+        && getAfter(transferPartnerPath()).data.sorte != request.resource.data.sorte
+        && getAfter(transferPartnerPath()).data.delta + request.resource.data.delta == 0;
     }
 
     match /events/{eventId} {
