@@ -18,6 +18,7 @@ interface LastAction {
   palletName: string;
   delta: number;
   mode: CountMode;
+  processId: string;
 }
 
 const emptyStats: PeriodStatistics = {
@@ -127,7 +128,7 @@ export function App() {
     setError(null);
 
     try {
-      const { event, projection } = await controller.book(mode, pallet, action);
+      const { event, projection, processId } = await controller.book(mode, pallet, action);
       setStocks(projection.bestandJeSorte);
       const pending = await controller.db.outbox.count();
       setPendingCount(pending);
@@ -136,10 +137,30 @@ export function App() {
         palletName: pallet.name,
         delta: event.delta,
         mode,
+        processId,
       });
       await refreshStatistics(controller);
     } catch {
       setError('Buchung wurde nicht gespeichert. Bitte erneut versuchen.');
+    }
+  };
+
+
+  const undoLastProcess = async () => {
+    const controller = controllerRef.current;
+    if (!controller || !lastAction) return;
+
+    setError(null);
+    try {
+      const { projection } = await controller.undoProcess(lastAction.processId);
+      setStocks(projection.bestandJeSorte);
+      const pending = await controller.db.outbox.count();
+      setPendingCount(pending);
+      setSyncState(pending > 0 ? 'PENDING' : 'SYNCHRON');
+      setLastAction(null);
+      await refreshStatistics(controller);
+    } catch {
+      setError('Rückgängig konnte nicht vollständig gespeichert werden.');
     }
   };
 
@@ -232,7 +253,7 @@ export function App() {
                   : 'Noch keine Buchung'}
               </strong>
             </div>
-            <button disabled>RÜCKGÄNGIG</button>
+            <button disabled={!lastAction} onClick={() => void undoLastProcess()}>RÜCKGÄNGIG</button>
           </div>
         </section>
       ) : (
