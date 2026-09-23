@@ -1,31 +1,86 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { LocalBookingController, type BookingAction } from './bookingController';
 import { PALLET_TYPES } from './config';
-import { effectForTap, syncLabel, type CountMode } from './logic';
+import { syncLabel, type CountMode } from './logic';
 
 type Tab = 'COUNT' | 'STATS';
 
+interface LastAction {
+  palletName: string;
+  delta: number;
+  mode: CountMode;
+}
+
 export function App() {
+  const controllerRef = useRef<LocalBookingController | null>(null);
   const [tab, setTab] = useState<Tab>('COUNT');
   const [mode, setMode] = useState<CountMode>('EINGANG');
-  const [stocks, setStocks] = useState<Record<string, number>>(
-    Object.fromEntries(PALLET_TYPES.map((type) => [type.id, 0])),
-  );
+  const [stocks, setStocks] = useState<Record<string, number>>({});
+  const [syncState, setSyncState] = useState<'SYNCHRON' | 'PENDING' | 'REJECTED' | 'NEVER_SYNCED'>('NEVER_SYNCED');
+  const [pendingCount, setPendingCount] = useState(0);
+  const [lastAction, setLastAction] = useState<LastAction | null>(null);
+  const [bookingBusy, setBookingBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new LocalBookingController();
+    controllerRef.current = controller;
+
+    void controller.initialize()
+      .then(async (projection) => {
+        if (cancelled) return;
+        setStocks(projection.bestandJeSorte);
+        const pending = await controller.db.outbox.count();
+        setPendingCount(pending);
+        setSyncState(pending > 0 ? 'PENDING' : 'NEVER_SYNCED');
+      })
+      .catch(() => {
+        if (!cancelled) setError('Lokaler Speicher konnte nicht geöffnet werden.');
+      });
+
+    return () => {
+      cancelled = true;
+      controller.db.close();
+      controllerRef.current = null;
+    };
+  }, []);
 
   const total = useMemo(
     () => Object.values(stocks).reduce((sum, value) => sum + value, 0),
     [stocks],
   );
 
-  const book = (
+  const book = async (
     palletId: string,
-    action: 'STACK' | 'PLUS_ONE' | 'MINUS_ONE',
+    action: BookingAction,
     stackSize: number,
   ) => {
-    const delta = effectForTap(mode, action, stackSize);
-    setStocks((current) => ({
-      ...current,
-      [palletId]: (current[palletId] ?? 0) + delta,
-    }));
+    if (bookingBusy) return;
+
+    const pallet = PALLET_TYPES.find((item) => item.id === palletId);
+    const controller = controllerRef.current;
+    if (!pallet || !controller || pallet.stackSize !== stackSize) return;
+
+    setBookingBusy(true);
+    setError(null);
+
+    try {
+      const { event, projection } = await controller.book(mode, pallet, action);
+      setStocks(projection.bestandJeSorte);
+      const pending = await controller.db.outbox.count();
+      setPendingCount(pending);
+      setSyncState(pending > 0 ? 'PENDING' : 'SYNCHRON');
+      setLastAction({
+        palletName: pallet.name,
+        delta: event.delta,
+        mode,
+      });
+    } catch {
+      setError('Buchung wurde nicht gespeichert. Bitte erneut versuchen.');
+    } finally {
+      setBookingBusy(false);
+    }
   };
 
   return (
@@ -38,11 +93,13 @@ export function App() {
             <span>PALETTENSERVICE</span>
           </div>
         </div>
-        <div className="sync-pill" aria-label="Synchronisationsstatus">
+        <div className={`sync-pill sync-${syncState.toLowerCase()}`} aria-label="Synchronisationsstatus">
           <span className="sync-dot" />
-          {syncLabel('SYNCHRON', 0)}
+          {syncLabel(syncState, pendingCount)}
         </div>
       </header>
+
+      {error && <div className="error-banner" role="alert">{error}</div>}
 
       {tab === 'COUNT' ? (
         <section className="count-page">
@@ -57,6 +114,7 @@ export function App() {
                 key={value}
                 className={mode === value ? 'active' : ''}
                 onClick={() => setMode(value)}
+                disabled={bookingBusy}
               >
                 {value}
               </button>
@@ -77,7 +135,8 @@ export function App() {
                 </div>
                 <button
                   className="stack-button"
-                  onClick={() => book(type.id, 'STACK', type.stackSize)}
+                  onClick={() => void book(type.id, 'STACK', type.stackSize)}
+                  disabled={bookingBusy}
                   aria-label={`${type.name} Stapel buchen`}
                 >
                   <span>{mode === 'EINGANG' ? '+' : '−'}{type.stackSize}</span>
@@ -85,14 +144,16 @@ export function App() {
                 </button>
                 <button
                   className="adjust-button"
-                  onClick={() => book(type.id, 'MINUS_ONE', type.stackSize)}
+                  onClick={() => void book(type.id, 'MINUS_ONE', type.stackSize)}
+                  disabled={bookingBusy}
                   aria-label={`${type.name} minus eins`}
                 >
                   −1
                 </button>
                 <button
                   className="adjust-button"
-                  onClick={() => book(type.id, 'PLUS_ONE', type.stackSize)}
+                  onClick={() => void book(type.id, 'PLUS_ONE', type.stackSize)}
+                  disabled={bookingBusy}
                   aria-label={`${type.name} plus eins`}
                 >
                   +1
@@ -104,7 +165,11 @@ export function App() {
           <div className="last-action">
             <div>
               <span>LETZTER VORGANG</span>
-              <strong>Noch keine Buchung</strong>
+              <strong>
+                {lastAction
+                  ? `${lastAction.palletName} · ${lastAction.mode} · ${lastAction.delta > 0 ? '+' : ''}${lastAction.delta}`
+                  : 'Noch keine Buchung'}
+              </strong>
             </div>
             <button disabled>RÜCKGÄNGIG</button>
           </div>
@@ -120,7 +185,7 @@ export function App() {
             <div><span>Bestand</span><strong>{total}</strong></div>
             <div><span>Dazugekommen</span><strong>0</strong></div>
           </div>
-          <div className="chart-placeholder">Statistikdaten werden aus E3 gespeist.</div>
+          <div className="chart-placeholder">Statistikdaten werden im nächsten UI-Schritt direkt aus E3 gespeist.</div>
         </section>
       )}
 
