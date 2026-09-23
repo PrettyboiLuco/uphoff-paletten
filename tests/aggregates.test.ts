@@ -191,6 +191,30 @@ describe('E3 aggregate revisions', () => {
     expect(aggregatesMatchRaw(revision, september, [original, correction])).toBe(true);
   });
 
+  it('refuses to freeze an aggregate while relevant events are still pending', async () => {
+    const store = new MemoryAggregateStore();
+    const pending = event(
+      'pending-a',
+      'ZUGANG',
+      15,
+      '2026-09-10T08:00:00+02:00',
+      { syncState: 'PENDING' },
+    );
+
+    await expect(
+      appendAggregateRevision(
+        store,
+        'MONTH',
+        '2026-09',
+        september,
+        [pending],
+        '2026-10-01T00:00:00Z',
+      ),
+    ).rejects.toThrow('aggregate-requires-confirmed-events');
+
+    expect(store.revisions).toHaveLength(0);
+  });
+
   it('persists aggregate revisions across IndexedDB reopen', async () => {
     const name = 'e3-aggregate-persistence';
     dbNames.push(name);
