@@ -18,6 +18,31 @@ test('one tap creates exactly one durable local booking', async ({ page }) => {
   await expect(page.locator('.sync-pill')).toContainText('1 ausstehend');
 });
 
+test('rapid taps are all persisted instead of being dropped', async ({ page }) => {
+  const button = page.locator('.pallet-row').first().locator('.adjust-button').last();
+
+  await Promise.all(Array.from({ length: 10 }, () => button.click()));
+
+  await expect(page.locator('.pallet-row').first().locator('.row-stock strong')).toHaveText('10');
+  await expect(page.locator('.sync-pill')).toContainText('10 ausstehend');
+
+  await page.reload();
+  await expect(page.locator('.pallet-row').first().locator('.row-stock strong')).toHaveText('10');
+});
+
+test('pointer swipe across a booking button does not create a booking', async ({ page }) => {
+  const button = page.locator('.pallet-row').first().locator('.stack-button');
+  const box = await button.boundingBox();
+  expect(box).not.toBeNull();
+
+  await page.mouse.move(box!.x + 10, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width + 80, box!.y + box!.height / 2, { steps: 6 });
+  await page.mouse.up();
+
+  await expect(page.locator('.pallet-row').first().locator('.row-stock strong')).toHaveText('0');
+});
+
 test('outgoing mode is visually and functionally distinct', async ({ page }) => {
   await page.getByRole('button', { name: 'AUSGANG' }).click();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-mode', 'ausgang');
