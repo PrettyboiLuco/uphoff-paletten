@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-layout-ready', 'true');
   await page.getByRole('button', { name: 'DATEN', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Daten und Betrieb' })).toBeVisible();
 });
