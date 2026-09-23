@@ -47,6 +47,19 @@ service cloud.firestore {
       ];
     }
 
+    function optionalFieldsValid() {
+      return (!request.resource.data.keys().hasAny(['person'])
+          || request.resource.data.person is string)
+        && (!request.resource.data.keys().hasAny(['vorgangId'])
+          || request.resource.data.vorgangId is string)
+        && (!request.resource.data.keys().hasAny(['korrigiertId'])
+          || request.resource.data.korrigiertId is string)
+        && (!request.resource.data.keys().hasAny(['umbuchungId'])
+          || request.resource.data.umbuchungId is string)
+        && (!request.resource.data.keys().hasAny(['umbuchungPartnerId'])
+          || request.resource.data.umbuchungPartnerId is string);
+    }
+
     function commonEventValid(eventId) {
       return request.resource.data.keys().hasOnly(allowedEventKeys())
         && request.resource.data.keys().hasAll([
@@ -69,6 +82,7 @@ service cloud.firestore {
         && request.resource.data.serverzeit == request.time
         && request.resource.data.buchungszeit <= request.time + duration.value(5, 'm')
         && request.resource.data.konfigVersion is string
+        && optionalFieldsValid()
         && configExists(request.resource.data.konfigVersion);
     }
 
