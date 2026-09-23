@@ -726,6 +726,8 @@ export function App() {
       {opsOpen && controllerRef.current && (
         <OpsPanel
           db={controllerRef.current.db}
+          remote={remoteRef.current}
+          deviceId={backendUid}
           onClose={() => setOpsOpen(false)}
           onDataChanged={async () => {
             const controller = controllerRef.current;
