@@ -11,11 +11,13 @@
     "test:e22": "vitest run tests/outbox.test.ts",
     "test:e23": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run tests/firestore.rules.test.ts\"",
     "test:e24": "vitest run tests/multiclient.test.ts",
-    "test:e1": "vitest run tests/domain.test.ts"
+    "test:e1": "vitest run tests/domain.test.ts",
+    "test:e3": "vitest run tests/statistics.test.ts"
   },
   "dependencies": {
     "dexie": "^4.2.0",
-    "firebase": "^12.3.0"
+    "firebase": "^12.3.0",
+    "@js-temporal/polyfill": "^0.5.1"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.2.2",
