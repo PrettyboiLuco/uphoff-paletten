@@ -1,5 +1,23 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { listEvents } from '../persistence/localDb';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
+import { LayoutEditor } from '../layout/LayoutEditor';
+import {
+  defaultLayout,
+  profileForViewport,
+  type LayoutDocument,
+  type LayoutItem,
+  type LayoutProfile,
+} from '../layout/layout';
+import { loadLayout } from '../layout/storage';
+import { logOperationalError } from '../ops/errorLog';
+import { OpsPanel } from '../ops/OpsPanel';
+import { listEvents, loadProjection } from '../persistence/localDb';
+import { requestDurableStorage } from '../pwa/storageDurability';
 import {
   comparePeriod,
   periodWindow,
@@ -8,16 +26,24 @@ import {
   type PeriodStatistics,
   type StatisticsPeriodKind,
 } from '../statistics/statistics';
+import { getFirebaseRuntime } from '../sync/firebaseRuntime';
+import { getSyncHealth } from '../sync/health';
+import { runFullSync, startRealtimeSync } from '../sync/reconcile';
+import { runSyncPass } from '../sync/syncEngine';
+import type { RemoteRealtimeEventStore, RemoteUnsubscribe } from '../sync/types';
 import { LocalBookingController, type BookingAction } from './bookingController';
-import { LayoutEditor } from '../layout/LayoutEditor';
-import { defaultLayout, profileForViewport, type LayoutDocument, type LayoutItem, type LayoutProfile } from '../layout/layout';
-import { loadLayout } from '../layout/storage';
-import { OpsPanel } from '../ops/OpsPanel';
-import { loadProjection } from '../persistence/localDb';
 import { PALLET_TYPES } from './config';
 import { syncLabel, type CountMode } from './logic';
 
 type Tab = 'COUNT' | 'STATS';
+
+type BackendState =
+  | 'INITIALIZING'
+  | 'NOT_CONFIGURED'
+  | 'AWAITING_APPROVAL'
+  | 'ACTIVE'
+  | 'OFFLINE'
+  | 'ERROR';
 
 interface LastAction {
   palletName: string;
@@ -49,29 +75,48 @@ const PERIODS: readonly { id: StatisticsPeriodKind; label: string }[] = [
 
 export function App() {
   const controllerRef = useRef<LocalBookingController | null>(null);
+  const remoteRef = useRef<RemoteRealtimeEventStore | null>(null);
+  const realtimeStopRef = useRef<RemoteUnsubscribe | null>(null);
+  const syncTaskRef = useRef<Promise<void> | null>(null);
   const swipeStartX = useRef<number | null>(null);
+
   const [tab, setTab] = useState<Tab>('COUNT');
   const [mode, setMode] = useState<CountMode>('EINGANG');
   const [stocks, setStocks] = useState<Record<string, number>>({});
-  const [syncState, setSyncState] = useState<'SYNCHRON' | 'PENDING' | 'REJECTED' | 'NEVER_SYNCED'>('NEVER_SYNCED');
+  const [syncState, setSyncState] = useState<
+    'SYNCHRON' | 'PENDING' | 'REJECTED' | 'NEVER_SYNCED'
+  >('NEVER_SYNCED');
   const [pendingCount, setPendingCount] = useState(0);
+  const [backendState, setBackendState] = useState<BackendState>('INITIALIZING');
+  const [backendUid, setBackendUid] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<StatisticsPeriodKind>('TODAY');
   const [sortFilter, setSortFilter] = useState<string>('ALL');
+  const periodRef = useRef<StatisticsPeriodKind>('TODAY');
+  const sortFilterRef = useRef<string>('ALL');
+  periodRef.current = period;
+  sortFilterRef.current = sortFilter;
+
   const [stats, setStats] = useState<PeriodStatistics>(emptyStats);
-  const [comparison, setComparison] = useState<PeriodComparison>(emptyComparison);
-  const initialProfile = profileForViewport(typeof window === 'undefined' ? 390 : window.innerWidth);
+  const [comparison, setComparison] =
+    useState<PeriodComparison>(emptyComparison);
+
+  const initialProfile = profileForViewport(
+    typeof window === 'undefined' ? 390 : window.innerWidth,
+  );
   const [layoutProfile] = useState<LayoutProfile>(initialProfile);
-  const [layout, setLayout] = useState<LayoutDocument>(() => defaultLayout(initialProfile));
+  const [layout, setLayout] = useState<LayoutDocument>(() =>
+    defaultLayout(initialProfile),
+  );
   const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
   const [layoutReady, setLayoutReady] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
 
   const refreshStatistics = async (
     controller: LocalBookingController,
-    nextPeriod = period,
-    nextSort = sortFilter,
+    nextPeriod = periodRef.current,
+    nextSort = sortFilterRef.current,
   ) => {
     const events = await listEvents(controller.db);
     const now = new Date().toISOString();
@@ -81,32 +126,222 @@ export function App() {
     setComparison(comparePeriod(events, nextPeriod, now, sort));
   };
 
+  const refreshLocalState = async (controller: LocalBookingController) => {
+    const [projection, health] = await Promise.all([
+      loadProjection(controller.db),
+      getSyncHealth(controller.db),
+    ]);
+
+    setStocks(projection.bestandJeSorte);
+    setPendingCount(health.pendingCount);
+    setSyncState(health.state);
+    await refreshStatistics(controller);
+  };
+
+  const recordSyncError = async (
+    controller: LocalBookingController,
+    code: string,
+    caught: unknown,
+  ) => {
+    try {
+      await logOperationalError(controller.db, {
+        code,
+        severity: 'ERROR',
+        message: caught instanceof Error ? caught.message : String(caught),
+        occurredAt: new Date().toISOString(),
+      });
+    } catch {
+      // The UI must remain usable even if diagnostic logging itself fails.
+    }
+  };
+
+  const pushPending = async (controller: LocalBookingController) => {
+    const remote = remoteRef.current;
+    if (!remote) return;
+
+    try {
+      await runSyncPass(controller.db, remote, Date.now());
+      setBackendState(navigator.onLine ? 'ACTIVE' : 'OFFLINE');
+    } catch (caught) {
+      setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
+      await recordSyncError(controller, 'SYNC_PUSH_FAILED', caught);
+    } finally {
+      await refreshLocalState(controller);
+    }
+  };
+
+  const fullSync = (controller: LocalBookingController): Promise<void> => {
+    if (syncTaskRef.current) return syncTaskRef.current;
+
+    const task = (async () => {
+      const remote = remoteRef.current;
+      if (!remote) return;
+
+      try {
+        const now = new Date();
+        await runFullSync(
+          controller.db,
+          remote,
+          now.getTime(),
+          now.toISOString(),
+        );
+        setBackendState(navigator.onLine ? 'ACTIVE' : 'OFFLINE');
+      } catch (caught) {
+        setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
+        await recordSyncError(controller, 'SYNC_RECONCILE_FAILED', caught);
+      } finally {
+        await refreshLocalState(controller);
+      }
+    })();
+
+    syncTaskRef.current = task.finally(() => {
+      syncTaskRef.current = null;
+    });
+    return syncTaskRef.current;
+  };
+
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: number | null = null;
+
     const controller = new LocalBookingController();
     controllerRef.current = controller;
 
-    void controller.initialize()
-      .then(async (projection) => {
+    const onOnline = () => {
+      setBackendState('ACTIVE');
+      void fullSync(controller);
+    };
+
+    const onOffline = () => {
+      setBackendState('OFFLINE');
+      void refreshLocalState(controller);
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && remoteRef.current) {
+        void fullSync(controller);
+      }
+    };
+
+    void (async () => {
+      try {
+        await controller.initialize();
         if (cancelled) return;
-        setStocks(projection.bestandJeSorte);
-        const pending = await controller.db.outbox.count();
-        setPendingCount(pending);
-        setSyncState(pending > 0 ? 'PENDING' : 'NEVER_SYNCED');
+
+        await refreshLocalState(controller);
         setLayout(await loadLayout(controller.db, layoutProfile));
         setLayoutReady(true);
-        await refreshStatistics(controller);
-      })
-      .catch(() => {
-        if (!cancelled) setError('Lokaler Speicher konnte nicht geöffnet werden.');
-      });
+
+        const storage = await requestDurableStorage();
+        await controller.db.meta.put({
+          key: 'storageDurability',
+          value: JSON.stringify(storage),
+        });
+
+        const runtime = await getFirebaseRuntime();
+        if (cancelled) return;
+
+        if (runtime.uid) {
+          controller.setDeviceId(runtime.uid);
+          setBackendUid(runtime.uid);
+        }
+
+        if (runtime.status === 'NOT_CONFIGURED') {
+          setBackendState('NOT_CONFIGURED');
+          return;
+        }
+
+        if (runtime.status === 'AWAITING_APPROVAL') {
+          setBackendState('AWAITING_APPROVAL');
+          return;
+        }
+
+        if (!runtime.remote || !runtime.uid) {
+          setBackendState('ERROR');
+          return;
+        }
+
+        const incompatiblePending = await controller.db.events
+          .filter(
+            (event) =>
+              (event.syncState === 'LOCAL_ONLY' || event.syncState === 'PENDING')
+              && event.geraetId !== runtime.uid,
+          )
+          .count();
+
+        if (incompatiblePending > 0) {
+          setBackendState('ERROR');
+          setError(
+            `${incompatiblePending} lokale Buchung(en) stammen von einer anderen Geräte-ID und werden nicht still umgeschrieben. Bitte im Datenbereich prüfen.`,
+          );
+          await logOperationalError(controller.db, {
+            code: 'PENDING_DEVICE_ID_MISMATCH',
+            severity: 'ERROR',
+            message: 'Pending events use a different device identity.',
+            occurredAt: new Date().toISOString(),
+            context: {
+              count: incompatiblePending,
+              activeUid: runtime.uid,
+            },
+          });
+          return;
+        }
+
+        remoteRef.current = runtime.remote;
+        setBackendState(navigator.onLine ? 'ACTIVE' : 'OFFLINE');
+
+        await fullSync(controller);
+        if (cancelled) return;
+
+        realtimeStopRef.current = startRealtimeSync(
+          controller.db,
+          runtime.remote,
+          () => new Date().toISOString(),
+          (caught) => {
+            setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
+            void recordSyncError(
+              controller,
+              'REALTIME_LISTENER_FAILED',
+              caught,
+            );
+          },
+          async () => {
+            await refreshLocalState(controller);
+          },
+        );
+
+        window.addEventListener('online', onOnline);
+        window.addEventListener('offline', onOffline);
+        document.addEventListener('visibilitychange', onVisibility);
+
+        retryTimer = window.setInterval(() => {
+          if (navigator.onLine && remoteRef.current) {
+            void pushPending(controller);
+          }
+        }, 15_000);
+      } catch (caught) {
+        if (cancelled) return;
+        setBackendState('ERROR');
+        setError(
+          'Die lokale App läuft weiter, aber die Cloud-Verbindung konnte nicht initialisiert werden.',
+        );
+        await recordSyncError(controller, 'STARTUP_FAILED', caught);
+      }
+    })();
 
     return () => {
       cancelled = true;
+      if (retryTimer !== null) window.clearInterval(retryTimer);
+      realtimeStopRef.current?.();
+      realtimeStopRef.current = null;
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      document.removeEventListener('visibilitychange', onVisibility);
       controller.db.close();
       controllerRef.current = null;
+      remoteRef.current = null;
     };
-    // Initialisierung bewusst nur einmal; Filteränderungen werden separat behandelt.
+    // Startup is intentionally one-shot. Current filters are read through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -123,10 +358,11 @@ export function App() {
   );
 
   const maxOutgoing = useMemo(
-    () => Math.max(
-      1,
-      ...Object.values(stats.bySort).map((value) => value.weggekommen),
-    ),
+    () =>
+      Math.max(
+        1,
+        ...Object.values(stats.bySort).map((value) => value.weggekommen),
+      ),
     [stats.bySort],
   );
 
@@ -142,23 +378,20 @@ export function App() {
     setError(null);
 
     try {
-      const { event, projection, processId } = await controller.book(mode, pallet, action);
-      setStocks(projection.bestandJeSorte);
-      const pending = await controller.db.outbox.count();
-      setPendingCount(pending);
-      setSyncState(pending > 0 ? 'PENDING' : 'SYNCHRON');
+      const { event, processId } = await controller.book(mode, pallet, action);
       setLastAction({
         palletName: pallet.name,
         delta: event.delta,
         mode,
         processId,
       });
-      await refreshStatistics(controller);
+
+      await refreshLocalState(controller);
+      await pushPending(controller);
     } catch {
       setError('Buchung wurde nicht gespeichert. Bitte erneut versuchen.');
     }
   };
-
 
   const undoLastProcess = async () => {
     const controller = controllerRef.current;
@@ -166,18 +399,14 @@ export function App() {
 
     setError(null);
     try {
-      const { projection } = await controller.undoProcess(lastAction.processId);
-      setStocks(projection.bestandJeSorte);
-      const pending = await controller.db.outbox.count();
-      setPendingCount(pending);
-      setSyncState(pending > 0 ? 'PENDING' : 'SYNCHRON');
+      await controller.undoProcess(lastAction.processId);
       setLastAction(null);
-      await refreshStatistics(controller);
+      await refreshLocalState(controller);
+      await pushPending(controller);
     } catch {
       setError('Rückgängig konnte nicht vollständig gespeichert werden.');
     }
   };
-
 
   const onPagePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
@@ -188,7 +417,7 @@ export function App() {
     swipeStartX.current = event.clientX;
   };
 
-  const onPagePointerUp = (event: React.PointerEvent<HTMLElement>) => {
+  const onPagePointerUp = (event: ReactPointerEvent<HTMLElement>) => {
     const start = swipeStartX.current;
     swipeStartX.current = null;
     if (start === null) return;
@@ -198,10 +427,9 @@ export function App() {
     setTab(delta < 0 ? 'STATS' : 'COUNT');
   };
 
-
   const blockStyle = (id: LayoutItem['id']) => {
     const item = layout.items.find((candidate) => candidate.id === id);
-    if (!item || item.w === layout.cols && item.x === 0) return undefined;
+    if (!item || (item.w === layout.cols && item.x === 0)) return undefined;
     return {
       width: `${(item.w / layout.cols) * 100}%`,
       marginLeft: `${(item.x / layout.cols) * 100}%`,
@@ -209,48 +437,115 @@ export function App() {
   };
 
   const outgoingChange = comparison.weggekommen.percentChange;
-  const outgoingComparisonText = outgoingChange === null
-    ? 'Keine belastbare Vorperiode'
-    : `${outgoingChange >= 0 ? '+' : ''}${Math.round(outgoingChange)} % zur Vorperiode`;
+  const outgoingComparisonText =
+    outgoingChange === null
+      ? 'Keine belastbare Vorperiode'
+      : `${outgoingChange >= 0 ? '+' : ''}${Math.round(outgoingChange)} % zur Vorperiode`;
+
+  const syncDisplay = (() => {
+    if (backendState === 'INITIALIZING') return 'Verbinde …';
+    if (backendState === 'NOT_CONFIGURED') {
+      return pendingCount > 0 ? `Nur lokal · ${pendingCount} ausstehend` : 'Nur lokal';
+    }
+    if (backendState === 'AWAITING_APPROVAL') {
+      return pendingCount > 0
+        ? `Freigabe nötig · ${pendingCount} ausstehend`
+        : 'Gerät freigeben';
+    }
+    if (backendState === 'OFFLINE') {
+      return pendingCount > 0 ? `Offline · ${pendingCount} ausstehend` : 'Offline';
+    }
+    if (backendState === 'ERROR') return 'Sync prüfen';
+    return syncLabel(syncState, pendingCount);
+  })();
+
+  const syncTone =
+    backendState === 'ACTIVE'
+      ? syncState.toLowerCase()
+      : backendState.toLowerCase();
 
   return (
-    <main className="app-shell" data-mode={mode.toLowerCase()} data-layout-ready={layoutReady ? 'true' : 'false'} onPointerDown={onPagePointerDown} onPointerUp={onPagePointerUp}>
+    <main
+      className="app-shell"
+      data-mode={mode.toLowerCase()}
+      data-layout-ready={layoutReady ? 'true' : 'false'}
+      data-backend-state={backendState.toLowerCase()}
+      onPointerDown={onPagePointerDown}
+      onPointerUp={onPagePointerUp}
+    >
       <div className="orientation-warning" role="status">
         <strong>HOCHFORMAT VERWENDEN</strong>
-        <span>Für sicheres Zählen ist diese Ansicht auf Hochformat ausgelegt.</span>
+        <span>
+          Für sicheres Zählen ist diese Ansicht auf Hochformat ausgelegt.
+        </span>
       </div>
+
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">U</span>
+          <span className="brand-mark" aria-hidden="true">
+            U
+          </span>
           <div>
             <strong>UPHOFF</strong>
             <span>PALETTENSERVICE</span>
           </div>
         </div>
+
         <div className="header-actions">
-          <button className="layout-open-button" onClick={() => setLayoutEditorOpen(true)}>
+          <button
+            className="layout-open-button"
+            onClick={() => setLayoutEditorOpen(true)}
+          >
             LAYOUT
           </button>
-          <button className="layout-open-button" onClick={() => setOpsOpen(true)}>
+          <button
+            className="layout-open-button"
+            onClick={() => setOpsOpen(true)}
+          >
             DATEN
           </button>
-          <div className={`sync-pill sync-${syncState.toLowerCase()}`} aria-label="Synchronisationsstatus">
+          <div
+            className={`sync-pill sync-${syncTone}`}
+            aria-label="Synchronisationsstatus"
+            title={
+              backendState === 'AWAITING_APPROVAL' && backendUid
+                ? `Geräte-ID: ${backendUid}`
+                : syncDisplay
+            }
+          >
             <span className="sync-dot" />
-            {syncLabel(syncState, pendingCount)}
+            {syncDisplay}
           </div>
         </div>
       </header>
 
-      {error && <div className="error-banner" role="alert">{error}</div>}
+      {backendState === 'AWAITING_APPROVAL' && backendUid && (
+        <div className="cloud-banner" role="status">
+          Geräte-ID zur Freigabe: <strong>{backendUid}</strong>
+        </div>
+      )}
+
+      {error && (
+        <div className="error-banner" role="alert">
+          {error}
+        </div>
+      )}
 
       {tab === 'COUNT' ? (
         <section className="count-page">
           <div className="hero-total" style={blockStyle('TOTAL')}>
             <span>PALETTEN INSGESAMT</span>
-            <strong aria-live="polite">{total.toLocaleString('de-DE')}</strong>
+            <strong aria-live="polite">
+              {total.toLocaleString('de-DE')}
+            </strong>
           </div>
 
-          <div className="mode-switch" role="group" aria-label="Buchungsmodus" style={blockStyle('MODE')}>
+          <div
+            className="mode-switch"
+            role="group"
+            aria-label="Buchungsmodus"
+            style={blockStyle('MODE')}
+          >
             {(['EINGANG', 'AUSGANG'] as const).map((value) => (
               <button
                 key={value}
@@ -276,22 +571,31 @@ export function App() {
                 </div>
                 <button
                   className="stack-button"
-                  onClick={() => void book(type.id, 'STACK', type.stackSize)}
+                  onClick={() =>
+                    void book(type.id, 'STACK', type.stackSize)
+                  }
                   aria-label={`${type.name} Stapel buchen`}
                 >
-                  <span>{mode === 'EINGANG' ? '+' : '−'}{type.stackSize}</span>
+                  <span>
+                    {mode === 'EINGANG' ? '+' : '−'}
+                    {type.stackSize}
+                  </span>
                   <small>STAPEL</small>
                 </button>
                 <button
                   className="adjust-button"
-                  onClick={() => void book(type.id, 'MINUS_ONE', type.stackSize)}
+                  onClick={() =>
+                    void book(type.id, 'MINUS_ONE', type.stackSize)
+                  }
                   aria-label={`${type.name} minus eins`}
                 >
                   −1
                 </button>
                 <button
                   className="adjust-button"
-                  onClick={() => void book(type.id, 'PLUS_ONE', type.stackSize)}
+                  onClick={() =>
+                    void book(type.id, 'PLUS_ONE', type.stackSize)
+                  }
                   aria-label={`${type.name} plus eins`}
                 >
                   +1
@@ -300,7 +604,10 @@ export function App() {
             ))}
           </div>
 
-          <div className="last-action" style={blockStyle('LAST_ACTION')}>
+          <div
+            className="last-action"
+            style={blockStyle('LAST_ACTION')}
+          >
             <div>
               <span>LETZTER VORGANG</span>
               <strong>
@@ -309,12 +616,21 @@ export function App() {
                   : 'Noch keine Buchung'}
               </strong>
             </div>
-            <button disabled={!lastAction} onClick={() => void undoLastProcess()}>RÜCKGÄNGIG</button>
+            <button
+              disabled={!lastAction}
+              onClick={() => void undoLastProcess()}
+            >
+              RÜCKGÄNGIG
+            </button>
           </div>
         </section>
       ) : (
         <section className="stats-page">
-          <div className="period-switch" role="group" aria-label="Statistikzeitraum">
+          <div
+            className="period-switch"
+            role="group"
+            aria-label="Statistikzeitraum"
+          >
             {PERIODS.map((item) => (
               <button
                 key={item.id}
@@ -335,7 +651,9 @@ export function App() {
             >
               <option value="ALL">Alle Paletten</option>
               {PALLET_TYPES.map((type) => (
-                <option key={type.id} value={type.id}>{type.name}</option>
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                </option>
               ))}
             </select>
           </div>
@@ -349,33 +667,47 @@ export function App() {
           <div className="stats-grid">
             <div>
               <span>BESTAND</span>
-              <strong>{sortFilter === 'ALL' ? total : (stocks[sortFilter] ?? 0)}</strong>
+              <strong>
+                {sortFilter === 'ALL'
+                  ? total
+                  : (stocks[sortFilter] ?? 0)}
+              </strong>
             </div>
             <div>
               <span>DAZUGEKOMMEN</span>
-              <strong>{stats.dazugekommen.toLocaleString('de-DE')}</strong>
+              <strong>
+                {stats.dazugekommen.toLocaleString('de-DE')}
+              </strong>
             </div>
             <div>
               <span>INVENTURDIFFERENZ</span>
-              <strong>{stats.inventurdifferenz > 0 ? '+' : ''}{stats.inventurdifferenz}</strong>
+              <strong>
+                {stats.inventurdifferenz > 0 ? '+' : ''}
+                {stats.inventurdifferenz}
+              </strong>
             </div>
           </div>
 
           <div className="bar-chart" aria-label="Weggekommen je Sorte">
-            {PALLET_TYPES
-              .filter((type) => sortFilter === 'ALL' || type.id === sortFilter)
-              .map((type) => {
-                const value = stats.bySort[type.id]?.weggekommen ?? 0;
-                return (
-                  <div className="bar-row" key={type.id}>
-                    <span>{type.name}</span>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: `${(value / maxOutgoing) * 100}%` }} />
-                    </div>
-                    <strong>{value}</strong>
+            {PALLET_TYPES.filter(
+              (type) => sortFilter === 'ALL' || type.id === sortFilter,
+            ).map((type) => {
+              const value = stats.bySort[type.id]?.weggekommen ?? 0;
+              return (
+                <div className="bar-row" key={type.id}>
+                  <span>{type.name}</span>
+                  <div className="bar-track">
+                    <div
+                      className="bar-fill"
+                      style={{
+                        width: `${(value / maxOutgoing) * 100}%`,
+                      }}
+                    />
                   </div>
-                );
-              })}
+                  <strong>{value}</strong>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -387,12 +719,8 @@ export function App() {
           onDataChanged={async () => {
             const controller = controllerRef.current;
             if (!controller) return;
-            const projection = await loadProjection(controller.db);
-            setStocks(projection.bestandJeSorte);
-            const pending = await controller.db.outbox.count();
-            setPendingCount(pending);
-            setSyncState(pending > 0 ? 'PENDING' : 'SYNCHRON');
-            await refreshStatistics(controller);
+            await refreshLocalState(controller);
+            await pushPending(controller);
           }}
         />
       )}
@@ -410,10 +738,16 @@ export function App() {
       )}
 
       <nav className="bottom-nav" aria-label="Hauptnavigation">
-        <button className={tab === 'COUNT' ? 'active' : ''} onClick={() => setTab('COUNT')}>
+        <button
+          className={tab === 'COUNT' ? 'active' : ''}
+          onClick={() => setTab('COUNT')}
+        >
           ZÄHLEN
         </button>
-        <button className={tab === 'STATS' ? 'active' : ''} onClick={() => setTab('STATS')}>
+        <button
+          className={tab === 'STATS' ? 'active' : ''}
+          onClick={() => setTab('STATS')}
+        >
           STATISTIK
         </button>
       </nav>
