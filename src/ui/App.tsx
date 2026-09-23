@@ -293,7 +293,7 @@ export function App() {
         await fullSync(controller);
         if (cancelled) return;
 
-        realtimeStopRef.current = startRealtimeSync(
+        realtimeStopRef.current = await startRealtimeSync(
           controller.db,
           runtime.remote,
           () => new Date().toISOString(),
