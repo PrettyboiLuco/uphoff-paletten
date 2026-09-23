@@ -12,6 +12,8 @@ import { LocalBookingController, type BookingAction } from './bookingController'
 import { LayoutEditor } from '../layout/LayoutEditor';
 import { defaultLayout, profileForViewport, type LayoutDocument, type LayoutItem, type LayoutProfile } from '../layout/layout';
 import { loadLayout } from '../layout/storage';
+import { OpsPanel } from '../ops/OpsPanel';
+import { loadProjection } from '../persistence/localDb';
 import { PALLET_TYPES } from './config';
 import { syncLabel, type CountMode } from './logic';
 
@@ -64,6 +66,7 @@ export function App() {
   const [layout, setLayout] = useState<LayoutDocument>(() => defaultLayout(initialProfile));
   const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
   const [layoutReady, setLayoutReady] = useState(false);
+  const [opsOpen, setOpsOpen] = useState(false);
 
   const refreshStatistics = async (
     controller: LocalBookingController,
@@ -228,6 +231,9 @@ export function App() {
           <button className="layout-open-button" onClick={() => setLayoutEditorOpen(true)}>
             LAYOUT
           </button>
+          <button className="layout-open-button" onClick={() => setOpsOpen(true)}>
+            DATEN
+          </button>
           <div className={`sync-pill sync-${syncState.toLowerCase()}`} aria-label="Synchronisationsstatus">
             <span className="sync-dot" />
             {syncLabel(syncState, pendingCount)}
@@ -372,6 +378,23 @@ export function App() {
               })}
           </div>
         </section>
+      )}
+
+      {opsOpen && controllerRef.current && (
+        <OpsPanel
+          db={controllerRef.current.db}
+          onClose={() => setOpsOpen(false)}
+          onDataChanged={async () => {
+            const controller = controllerRef.current;
+            if (!controller) return;
+            const projection = await loadProjection(controller.db);
+            setStocks(projection.bestandJeSorte);
+            const pending = await controller.db.outbox.count();
+            setPendingCount(pending);
+            setSyncState(pending > 0 ? 'PENDING' : 'SYNCHRON');
+            await refreshStatistics(controller);
+          }}
+        />
       )}
 
       {layoutEditorOpen && controllerRef.current && (
