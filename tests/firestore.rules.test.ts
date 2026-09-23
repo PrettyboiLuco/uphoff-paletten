@@ -111,6 +111,45 @@ describe('E2.3 Firestore security rules', () => {
     );
   });
 
+  it('rejects unknown pallet sorts even for +/-1 adjustments', async () => {
+    const db = env.authenticatedContext('iphone-user').firestore();
+
+    await assertFails(
+      setDoc(
+        doc(db, 'events/unknown-sort'),
+        eventData('iphone-user', {
+          id: 'unknown-sort',
+          sorte: 'NOT_CONFIGURED',
+          delta: 1,
+        }),
+      ),
+    );
+  });
+
+  it('rejects empty or oversized process identifiers', async () => {
+    const db = env.authenticatedContext('iphone-user').firestore();
+
+    await assertFails(
+      setDoc(
+        doc(db, 'events/empty-process'),
+        eventData('iphone-user', {
+          id: 'empty-process',
+          vorgangId: '',
+        }),
+      ),
+    );
+
+    await assertFails(
+      setDoc(
+        doc(db, 'events/oversized-process'),
+        eventData('iphone-user', {
+          id: 'oversized-process',
+          vorgangId: 'x'.repeat(129),
+        }),
+      ),
+    );
+  });
+
   it('accepts valid ABGANG deltas and rejects invalid signs/deltas', async () => {
     const db = env.authenticatedContext('iphone-user').firestore();
 
