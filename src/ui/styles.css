@@ -385,3 +385,213 @@ button:disabled { opacity: .48; cursor: default; }
   .bar-row > span { font-size: 8px; }
   .bar-row > strong { font-size: 9px; }
 }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layout-open-button {
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255,255,255,.035);
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+
+.layout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  padding:
+    calc(14px + env(safe-area-inset-top, 0px))
+    14px
+    calc(14px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  place-items: center;
+  background: rgba(4,5,7,.88);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.layout-confirm,
+.layout-panel {
+  width: min(620px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #0d1014;
+  box-shadow: 0 20px 70px rgba(0,0,0,.45);
+}
+
+.layout-confirm {
+  padding: 22px;
+}
+.layout-confirm > span,
+.layout-panel header span {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: .14em;
+}
+.layout-confirm h2 {
+  margin: 8px 0;
+  font-size: 24px;
+}
+.layout-confirm p,
+.layout-help {
+  color: #a7afb7;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.layout-confirm-actions,
+.layout-panel footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.layout-confirm button,
+.layout-panel footer button,
+.layout-panel header > button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255,255,255,.04);
+  padding: 0 14px;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+.layout-confirm button.primary,
+.layout-panel footer button.primary {
+  border-color: rgba(78,227,154,.32);
+  background: rgba(78,227,154,.11);
+  color: var(--incoming);
+}
+
+.layout-panel {
+  max-height: 100%;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+.layout-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.layout-panel header > div {
+  display: grid;
+  gap: 3px;
+}
+.layout-panel header strong {
+  font-size: 15px;
+}
+.layout-panel header > button {
+  min-width: 44px;
+  padding: 0;
+  font-size: 20px;
+}
+.layout-help { margin: 0; }
+
+.layout-canvas {
+  position: relative;
+  width: min(100%, 450px);
+  aspect-ratio: 12 / 16;
+  justify-self: center;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 14px;
+  background:
+    linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px),
+    #080a0c;
+  background-size: calc(100% / 12) calc(100% / 16);
+  touch-action: none;
+}
+
+.layout-item {
+  position: absolute;
+  padding: 8px;
+  border: 1px solid rgba(78,227,154,.3);
+  border-radius: 9px;
+  background: rgba(78,227,154,.08);
+  display: grid;
+  place-content: center;
+  text-align: center;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.layout-item > span {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+.layout-item > small {
+  color: var(--muted);
+  font-size: 7px;
+  margin-top: 3px;
+}
+.layout-item.locked {
+  border-color: rgba(255,255,255,.14);
+  background: rgba(255,255,255,.035);
+  cursor: default;
+}
+.resize-handle {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 6px;
+  background:
+    linear-gradient(135deg, transparent 46%, rgba(255,255,255,.65) 48%, rgba(255,255,255,.65) 53%, transparent 55%);
+  padding: 0;
+  cursor: nwse-resize;
+}
+
+.layout-profile-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.layout-profile-readout span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+@media (max-height: 680px) and (orientation: portrait) {
+  .layout-open-button {
+    min-height: 26px;
+    padding: 0 6px;
+    font-size: 7px;
+  }
+
+  .header-actions { gap: 3px; }
+  .layout-panel {
+    padding: 8px;
+    gap: 6px;
+  }
+  .layout-help { font-size: 10px; }
+  .layout-canvas {
+    width: min(100%, 285px);
+  }
+  .layout-panel footer {
+    margin-top: 2px;
+  }
+  .layout-panel footer button {
+    min-height: 36px;
+    padding: 0 9px;
+  }
+}
