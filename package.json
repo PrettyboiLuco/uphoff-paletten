@@ -21,7 +21,8 @@
     "test:e4-browser": "playwright test tests/browser/count.spec.ts",
     "test:e5": "vitest run tests/layout.test.ts",
     "test:e5-browser": "playwright test tests/browser/layout.spec.ts",
-    "test:e6": "vitest run tests/ops.test.ts"
+    "test:e6": "vitest run tests/ops.test.ts",
+    "test:e6-browser": "playwright test tests/browser/ops.spec.ts"
   },
   "dependencies": {
     "dexie": "^4.2.0",
