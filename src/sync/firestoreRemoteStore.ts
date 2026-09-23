@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -13,7 +14,8 @@ import type { PalletEvent } from '../domain/types';
 import {
   RemoteCreateError,
   type RemoteCreateResult,
-  type RemoteReadableEventStore,
+  type RemoteRealtimeEventStore,
+  type RemoteUnsubscribe,
 } from './types';
 
 function toFirestoreEvent(event: PalletEvent): Record<string, unknown> {
@@ -95,7 +97,7 @@ function mapFirebaseError(error: unknown): RemoteCreateError {
   return new RemoteCreateError('PERMISSION_DENIED', error.message);
 }
 
-export class FirestoreRemoteEventStore implements RemoteReadableEventStore {
+export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {
   constructor(private readonly db: Firestore) {}
 
   async createEvent(event: PalletEvent): Promise<RemoteCreateResult> {
@@ -130,5 +132,22 @@ export class FirestoreRemoteEventStore implements RemoteReadableEventStore {
   async listEvents(): Promise<PalletEvent[]> {
     const snapshot = await getDocs(collection(this.db, 'events'));
     return snapshot.docs.map((item) => fromFirestoreEvent(item.data()));
+  }
+
+  subscribeEvents(
+    onEvent: (event: PalletEvent) => void | Promise<void>,
+    onError: (error: unknown) => void,
+  ): RemoteUnsubscribe {
+    return onSnapshot(
+      collection(this.db, 'events'),
+      (snapshot) => {
+        for (const change of snapshot.docChanges()) {
+          if (change.type !== 'added') continue;
+          const event = fromFirestoreEvent(change.doc.data());
+          void Promise.resolve(onEvent(event)).catch(onError);
+        }
+      },
+      onError,
+    );
   }
 }
