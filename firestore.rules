@@ -1,0 +1,170 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function devicePath(uid) {
+      return /databases/$(database)/documents/devices/$(uid);
+    }
+
+    function isActiveDevice() {
+      return request.auth != null
+        && exists(devicePath(request.auth.uid))
+        && get(devicePath(request.auth.uid)).data.enabled == true;
+    }
+
+    function isAdmin() {
+      return isActiveDevice()
+        && get(devicePath(request.auth.uid)).data.role == 'ADMIN';
+    }
+
+    function configPath(version) {
+      return /databases/$(database)/documents/configs/$(version);
+    }
+
+    function configExists(version) {
+      return exists(configPath(version));
+    }
+
+    function stackSize(version, sorte) {
+      return get(configPath(version)).data.stapel[sorte];
+    }
+
+    function allowedEventKeys() {
+      return [
+        'id',
+        'geraetId',
+        'person',
+        'sorte',
+        'art',
+        'delta',
+        'buchungszeit',
+        'serverzeit',
+        'konfigVersion',
+        'vorgangId',
+        'korrigiertId',
+        'umbuchungId',
+        'umbuchungPartnerId',
+        'clockSkewFlag'
+      ];
+    }
+
+    function commonEventValid(eventId) {
+      return request.resource.data.keys().hasOnly(allowedEventKeys())
+        && request.resource.data.keys().hasAll([
+          'id',
+          'geraetId',
+          'sorte',
+          'art',
+          'delta',
+          'buchungszeit',
+          'serverzeit',
+          'konfigVersion'
+        ])
+        && request.resource.data.id == eventId
+        && request.resource.data.geraetId == request.auth.uid
+        && request.resource.data.sorte is string
+        && request.resource.data.art is string
+        && request.resource.data.delta is int
+        && request.resource.data.buchungszeit is timestamp
+        && request.resource.data.serverzeit is timestamp
+        && request.resource.data.serverzeit == request.time
+        && request.resource.data.buchungszeit <= request.time + duration.value(5, 'm')
+        && request.resource.data.konfigVersion is string
+        && configExists(request.resource.data.konfigVersion);
+    }
+
+    function validZugang() {
+      let stack = stackSize(
+        request.resource.data.konfigVersion,
+        request.resource.data.sorte
+      );
+      return request.resource.data.art == 'ZUGANG'
+        && (
+          request.resource.data.delta == stack
+          || request.resource.data.delta == 1
+          || request.resource.data.delta == -1
+        );
+    }
+
+    function validAbgang() {
+      let stack = stackSize(
+        request.resource.data.konfigVersion,
+        request.resource.data.sorte
+      );
+      return request.resource.data.art == 'ABGANG'
+        && (
+          request.resource.data.delta == -stack
+          || request.resource.data.delta == -1
+          || request.resource.data.delta == 1
+        );
+    }
+
+    function originalPath(id) {
+      return /databases/$(database)/documents/events/$(id);
+    }
+
+    function validCorrection(eventId) {
+      let originalId = request.resource.data.korrigiertId;
+      let original = get(originalPath(originalId)).data;
+      return request.resource.data.art == 'KORREKTUR'
+        && request.resource.data.keys().hasAll(['korrigiertId'])
+        && exists(originalPath(originalId))
+        && eventId == 'korr_' + originalId
+        && original.art != 'KORREKTUR'
+        && request.resource.data.sorte == original.sorte
+        && request.resource.data.delta == -original.delta;
+    }
+
+    function validAdminAdjustment() {
+      return isAdmin()
+        && (
+          request.resource.data.art == 'ANFANGSBESTAND'
+          || request.resource.data.art == 'INVENTUR'
+        );
+    }
+
+    function transferPartnerPath() {
+      return /databases/$(database)/documents/events/$(request.resource.data.umbuchungPartnerId);
+    }
+
+    function validTransfer(eventId) {
+      let partner = getAfter(transferPartnerPath()).data;
+      return isAdmin()
+        && request.resource.data.art == 'UMBUCHUNG'
+        && request.resource.data.keys().hasAll(['umbuchungId', 'umbuchungPartnerId'])
+        && request.resource.data.umbuchungPartnerId != eventId
+        && existsAfter(transferPartnerPath())
+        && partner.art == 'UMBUCHUNG'
+        && partner.umbuchungId == request.resource.data.umbuchungId
+        && partner.umbuchungPartnerId == eventId
+        && partner.geraetId == request.auth.uid
+        && partner.sorte != request.resource.data.sorte
+        && partner.delta + request.resource.data.delta == 0;
+    }
+
+    match /events/{eventId} {
+      allow read: if isActiveDevice();
+      allow create: if isActiveDevice()
+        && commonEventValid(eventId)
+        && (
+          validZugang()
+          || validAbgang()
+          || validCorrection(eventId)
+          || validAdminAdjustment()
+          || validTransfer(eventId)
+        );
+      allow update, delete: if false;
+    }
+
+    match /configs/{version} {
+      allow read: if isActiveDevice();
+      allow write: if isAdmin();
+    }
+
+    match /devices/{uid} {
+      allow read: if isActiveDevice() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+  }
+}
