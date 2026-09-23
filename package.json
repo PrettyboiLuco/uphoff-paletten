@@ -12,7 +12,7 @@
     "test:e23": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run tests/firestore.rules.test.ts\"",
     "test:e24": "vitest run tests/multiclient.test.ts",
     "test:e1": "vitest run tests/domain.test.ts",
-    "test:e3": "vitest run tests/statistics.test.ts"
+    "test:e3": "vitest run tests/statistics.test.ts tests/aggregates.test.ts"
   },
   "dependencies": {
     "dexie": "^4.2.0",
