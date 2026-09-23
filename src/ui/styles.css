@@ -141,8 +141,8 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 @media (max-width: 390px) {
   .app-shell { padding-left: 8px; padding-right: 8px; }
-  .pallet-row { grid-template-columns: 3px minmax(60px,1fr) 48px 58px 54px 54px; gap: 4px; }
-  .stack-button, .adjust-button { min-width: 54px; }
+  .pallet-row { grid-template-columns: 3px minmax(50px,1fr) 44px 60px 60px 60px; gap: 4px; }
+  .stack-button, .adjust-button { min-width: 60px; min-height: 60px; }
   .type-copy strong { font-size: 12px; }
   .row-stock strong { font-size: 20px; }
   .bottom-nav { left: 8px; right: 8px; }
