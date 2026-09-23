@@ -1,8 +1,8 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../src/domain/types';
-import { UphoffLocalDb } from '../src/persistence/localDb';
 import { IndexedDbAggregateStore } from '../src/persistence/aggregateStore';
+import { UphoffLocalDb } from '../src/persistence/localDb';
 import {
   aggregatesMatchRaw,
   appendAggregateRevision,
@@ -57,34 +57,6 @@ afterEach(async () => {
     const database = new UphoffLocalDb(name);
     await database.delete();
   }
-  it('persists aggregate revisions across IndexedDB reopen', async () => {
-    const name = 'e3-aggregate-persistence';
-    dbNames.push(name);
-    let database = new UphoffLocalDb(name);
-    let store = new IndexedDbAggregateStore(database);
-    const events = [
-      event('persist-a', 'ZUGANG', 15, '2026-09-10T08:00:00+02:00'),
-    ];
-
-    await appendAggregateRevision(
-      store,
-      'MONTH',
-      '2026-09',
-      september,
-      events,
-      '2026-10-01T00:00:00Z',
-    );
-    await database.close();
-
-    database = new UphoffLocalDb(name);
-    store = new IndexedDbAggregateStore(database);
-    const revisions = await store.list('MONTH', '2026-09');
-
-    expect(revisions).toHaveLength(1);
-    expect(revisions[0]?.revision).toBe(1);
-    expect(revisions[0]?.stats.dazugekommen).toBe(15);
-    await database.close();
-  });
 });
 
 const september = {
@@ -217,5 +189,35 @@ describe('E3 aggregate revisions', () => {
     expect(revision.stats.dazugekommen).toBe(0);
     expect(revision.sourceEventCount).toBe(2);
     expect(aggregatesMatchRaw(revision, september, [original, correction])).toBe(true);
+  });
+
+  it('persists aggregate revisions across IndexedDB reopen', async () => {
+    const name = 'e3-aggregate-persistence';
+    dbNames.push(name);
+
+    let database = new UphoffLocalDb(name);
+    let store = new IndexedDbAggregateStore(database);
+    const events = [
+      event('persist-a', 'ZUGANG', 15, '2026-09-10T08:00:00+02:00'),
+    ];
+
+    await appendAggregateRevision(
+      store,
+      'MONTH',
+      '2026-09',
+      september,
+      events,
+      '2026-10-01T00:00:00Z',
+    );
+    await database.close();
+
+    database = new UphoffLocalDb(name);
+    store = new IndexedDbAggregateStore(database);
+    const revisions = await store.list('MONTH', '2026-09');
+
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]?.revision).toBe(1);
+    expect(revisions[0]?.stats.dazugekommen).toBe(15);
+    await database.close();
   });
 });
