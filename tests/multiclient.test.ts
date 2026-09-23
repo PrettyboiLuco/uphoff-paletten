@@ -176,6 +176,45 @@ describe('E2.4 multi-client convergence and fault injection', () => {
     expect(remote.events.size).toBe(3);
   });
 
+  it('converges correctly even when a correction is received before its original', async () => {
+    const remote = new SharedRemote();
+    remote.events.set('original-order', {
+      id: 'original-order',
+      geraetId: 'phone-a',
+      sorte: 'EURO',
+      art: 'ZUGANG',
+      delta: 15,
+      buchungszeit: '2026-09-23T10:00:00+02:00',
+      serverzeit: '2026-09-23T10:00:01Z',
+      konfigVersion: 'v1',
+    });
+    remote.events.set('korr_original-order', {
+      id: 'korr_original-order',
+      geraetId: 'phone-a',
+      sorte: 'EURO',
+      art: 'KORREKTUR',
+      delta: -15,
+      buchungszeit: '2026-09-23T10:00:02+02:00',
+      serverzeit: '2026-09-23T10:00:03Z',
+      konfigVersion: 'v1',
+      korrigiertId: 'original-order',
+    });
+    remote.reverseReads = true;
+
+    const client = db('e24-correction-order');
+    await runFullSync(
+      client,
+      remote,
+      1000,
+      '2026-09-23T10:00:04Z',
+    );
+
+    const projection = await loadProjection(client);
+    expect(projection.bestandGesamt).toBe(0);
+    expect(projection.dazugekommen).toBe(0);
+    expect(projection.anomalies).toEqual([]);
+  });
+
   it('keeps 50 offline bookings across app kill and later converges them to another device', async () => {
     const remote = new SharedRemote();
     const name = 'e24-offline-kill';
