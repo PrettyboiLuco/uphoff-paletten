@@ -50,12 +50,45 @@ export async function runSyncPass(
   };
 
   const items = await getReadyOutboxItems(db, now);
+  const orderedItems = [...items].sort(
+    (a, b) => a.nextAttemptAt - b.nextAttemptAt,
+  );
 
-  for (const item of items) {
-    const local = await db.events.get(item.eventId);
-    if (!local) {
+  const enriched: Array<{ item: (typeof items)[number]; event: StoredEvent }> = [];
+  for (const item of orderedItems) {
+    const event = await db.events.get(item.eventId);
+    if (!event) {
       await db.outbox.delete(item.eventId);
       continue;
+    }
+    enriched.push({ item, event });
+  }
+
+  enriched.sort((a, b) => {
+    if (a.event.art === 'KORREKTUR' && b.event.art !== 'KORREKTUR') return 1;
+    if (a.event.art !== 'KORREKTUR' && b.event.art === 'KORREKTUR') return -1;
+    return a.item.nextAttemptAt - b.item.nextAttemptAt;
+  });
+
+  for (const { item, event: local } of enriched) {
+    if (local.art === 'KORREKTUR' && local.korrigiertId) {
+      const original = await db.events.get(local.korrigiertId);
+      if (!original) {
+        await markRejected(db, local.id, 'ORPHAN_CORRECTION');
+        result.rejected += 1;
+        continue;
+      }
+
+      if (original.syncState !== 'CONFIRMED') {
+        await scheduleRetry(
+          db,
+          item,
+          now,
+          'WAITING_FOR_ORIGINAL_CONFIRMATION',
+        );
+        result.retried += 1;
+        continue;
+      }
     }
 
     try {
