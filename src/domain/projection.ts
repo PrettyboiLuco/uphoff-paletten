@@ -1,17 +1,65 @@
-import type { OperationAssessment, PalletEvent, Projection } from './types';
+import type { OperationAssessment, PalletEvent, Projection, StoredEvent, SyncState } from './types';
 
-function uniqueById(events: readonly PalletEvent[]): PalletEvent[] {
-  const map = new Map<string, PalletEvent>();
+const syncRank: Record<SyncState, number> = {
+  REJECTED: 0,
+  LOCAL_ONLY: 1,
+  PENDING: 2,
+  CONFIRMED: 3,
+};
+
+function immutableSignature(event: PalletEvent): string {
+  return JSON.stringify({
+    id: event.id,
+    geraetId: event.geraetId,
+    person: event.person ?? null,
+    sorte: event.sorte,
+    art: event.art,
+    delta: event.delta,
+    buchungszeit: event.buchungszeit,
+    konfigVersion: event.konfigVersion,
+    vorgangId: event.vorgangId ?? null,
+    korrigiertId: event.korrigiertId ?? null,
+    umbuchungId: event.umbuchungId ?? null,
+  });
+}
+
+function reconcileById(events: readonly StoredEvent[]): {
+  events: StoredEvent[];
+  anomalies: string[];
+} {
+  const groups = new Map<string, StoredEvent[]>();
+
   for (const event of events) {
-    if (!map.has(event.id)) map.set(event.id, event);
+    const group = groups.get(event.id);
+    if (group) group.push(event);
+    else groups.set(event.id, [event]);
   }
-  return [...map.values()];
+
+  const reconciled: StoredEvent[] = [];
+  const anomalies: string[] = [];
+
+  for (const [id, group] of groups) {
+    const signatures = new Set(group.map(immutableSignature));
+
+    if (signatures.size > 1) {
+      anomalies.push(`${id}:id-content-conflict`);
+      continue;
+    }
+
+    const chosen = [...group].sort(
+      (a, b) => syncRank[b.syncState] - syncRank[a.syncState],
+    )[0];
+
+    if (chosen) reconciled.push(chosen);
+  }
+
+  return { events: reconciled, anomalies };
 }
 
 function validCorrection(
-  correction: PalletEvent,
-  byId: ReadonlyMap<string, PalletEvent>,
-): { valid: boolean; original?: PalletEvent; reason?: string } {
+  correction: StoredEvent,
+  byId: ReadonlyMap<string, StoredEvent>,
+): { valid: boolean; original?: StoredEvent; reason?: string } {
   if (correction.art !== 'KORREKTUR') return { valid: false, reason: 'not-correction' };
   if (!correction.korrigiertId) return { valid: false, reason: 'missing-korrigiertId' };
 
@@ -27,12 +75,13 @@ function validCorrection(
   return { valid: true, original };
 }
 
-export function project(events: readonly PalletEvent[]): Projection {
-  const deduped = uniqueById(events).filter((event) => event.syncState !== 'REJECTED');
+export function project(events: readonly StoredEvent[]): Projection {
+  const reconciled = reconcileById(events);
+  const deduped = reconciled.events.filter((event) => event.syncState !== 'REJECTED');
   const byId = new Map(deduped.map((event) => [event.id, event] as const));
 
   const bestandJeSorte: Record<string, number> = {};
-  const anomalies: string[] = [];
+  const anomalies = [...reconciled.anomalies];
 
   let bestandGesamt = 0;
   let dazugekommen = 0;
