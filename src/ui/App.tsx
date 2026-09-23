@@ -63,6 +63,7 @@ export function App() {
   const [layoutProfile] = useState<LayoutProfile>(initialProfile);
   const [layout, setLayout] = useState<LayoutDocument>(() => defaultLayout(initialProfile));
   const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
+  const [layoutReady, setLayoutReady] = useState(false);
 
   const refreshStatistics = async (
     controller: LocalBookingController,
@@ -90,6 +91,7 @@ export function App() {
         setPendingCount(pending);
         setSyncState(pending > 0 ? 'PENDING' : 'NEVER_SYNCED');
         setLayout(await loadLayout(controller.db, layoutProfile));
+        setLayoutReady(true);
         await refreshStatistics(controller);
       })
       .catch(() => {
@@ -209,7 +211,7 @@ export function App() {
     : `${outgoingChange >= 0 ? '+' : ''}${Math.round(outgoingChange)} % zur Vorperiode`;
 
   return (
-    <main className="app-shell" data-mode={mode.toLowerCase()} onPointerDown={onPagePointerDown} onPointerUp={onPagePointerUp}>
+    <main className="app-shell" data-mode={mode.toLowerCase()} data-layout-ready={layoutReady ? 'true' : 'false'} onPointerDown={onPagePointerDown} onPointerUp={onPagePointerUp}>
       <div className="orientation-warning" role="status">
         <strong>HOCHFORMAT VERWENDEN</strong>
         <span>Für sicheres Zählen ist diese Ansicht auf Hochformat ausgelegt.</span>
@@ -376,7 +378,10 @@ export function App() {
         <LayoutEditor
           db={controllerRef.current.db}
           profile={layoutProfile}
-          onSaved={setLayout}
+          onSaved={(nextLayout) => {
+            setLayout(nextLayout);
+            setLayoutReady(true);
+          }}
           onClose={() => setLayoutEditorOpen(false)}
         />
       )}
