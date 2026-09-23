@@ -8,6 +8,7 @@ import { runFullSync, startRealtimeSync } from '../src/sync/reconcile';
 import {
   RemoteCreateError,
   type RemoteCreateResult,
+  type RemoteCursor,
   type RemoteRealtimeEventStore,
   type RemoteUnsubscribe,
 } from '../src/sync/types';
@@ -46,6 +47,8 @@ class SharedRemote implements RemoteRealtimeEventStore {
     onError: (error: unknown) => void;
   }>();
   reverseReads = false;
+  listAllCalls = 0;
+  listAfterCalls = 0;
   serverClockIso = '2026-09-23T10:00:01.000Z';
 
   async createEvent(input: PalletEvent): Promise<RemoteCreateResult> {
@@ -79,13 +82,27 @@ class SharedRemote implements RemoteRealtimeEventStore {
   }
 
   async listEvents(): Promise<PalletEvent[]> {
+    this.listAllCalls += 1;
     const result = [...this.events.values()].map((item) => ({ ...item }));
     return this.reverseReads ? result.reverse() : result;
+  }
+
+  async listEventsAfter(cursor: RemoteCursor): Promise<PalletEvent[]> {
+    this.listAfterCalls += 1;
+    const boundary = Date.parse(cursor.serverzeit);
+    return [...this.events.values()]
+      .filter(
+        (item) =>
+          item.serverzeit !== undefined
+          && Date.parse(item.serverzeit) >= boundary,
+      )
+      .map((item) => ({ ...item }));
   }
 
   subscribeEvents(
     onEvent: (event: PalletEvent) => void | Promise<void>,
     onError: (error: unknown) => void,
+    _after?: RemoteCursor,
   ): RemoteUnsubscribe {
     const subscriber = { onEvent, onError };
     this.subscribers.add(subscriber);
@@ -109,7 +126,7 @@ describe('E2.4 multi-client convergence and fault injection', () => {
     const phoneB = db('e24-realtime-b');
     const errors: unknown[] = [];
 
-    const unsubscribe = startRealtimeSync(
+    const unsubscribe = await startRealtimeSync(
       phoneB,
       remote,
       () => '2026-09-23T10:00:02Z',
@@ -134,6 +151,58 @@ describe('E2.4 multi-client convergence and fault injection', () => {
     expect(errors).toEqual([]);
 
     unsubscribe();
+  });
+
+
+  it('uses an overlapping incremental cursor after the first full reconciliation', async () => {
+    const remote = new SharedRemote();
+    const client = db('e24-incremental-cursor');
+
+    remote.events.set('first-z', {
+      id: 'first-z',
+      geraetId: 'phone-a',
+      sorte: 'EURO',
+      art: 'ZUGANG',
+      delta: 15,
+      buchungszeit: '2026-09-23T10:00:00+02:00',
+      serverzeit: '2026-09-23T10:00:01.000Z',
+      konfigVersion: 'v1',
+    });
+
+    await runFullSync(
+      client,
+      remote,
+      1000,
+      '2026-09-23T10:00:02Z',
+    );
+
+    expect(remote.listAllCalls).toBe(1);
+    expect(remote.listAfterCalls).toBe(0);
+
+    // Same server timestamp but lexically lower id: the overlap boundary must
+    // still retrieve it instead of skipping it behind the saved cursor.
+    remote.events.set('aaa-late-same-time', {
+      id: 'aaa-late-same-time',
+      geraetId: 'phone-b',
+      sorte: 'EURO',
+      art: 'ZUGANG',
+      delta: 15,
+      buchungszeit: '2026-09-23T10:00:00+02:00',
+      serverzeit: '2026-09-23T10:00:01.000Z',
+      konfigVersion: 'v1',
+    });
+
+    await runFullSync(
+      client,
+      remote,
+      2000,
+      '2026-09-23T10:00:03Z',
+    );
+
+    expect(remote.listAllCalls).toBe(1);
+    expect(remote.listAfterCalls).toBe(1);
+    expect(await client.events.count()).toBe(2);
+    expect((await loadProjection(client)).bestandGesamt).toBe(30);
   });
 
   it('converges three independent clients after simultaneous bookings', async () => {
