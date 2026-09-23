@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { StoredEvent } from '../domain/types';
+import type { OutboxItem } from '../sync/types';
 import { project } from '../domain/projection';
 
 export interface LocalMeta {
@@ -10,12 +11,14 @@ export interface LocalMeta {
 export class UphoffLocalDb extends Dexie {
   events!: EntityTable<StoredEvent, 'id'>;
   meta!: EntityTable<LocalMeta, 'key'>;
+  outbox!: EntityTable<OutboxItem, 'eventId'>;
 
   constructor(name: string) {
     super(name);
     this.version(1).stores({
       events: '&id, buchungszeit, sorte, art, syncState, geraetId, konfigVersion',
       meta: '&key',
+      outbox: '&eventId, status, nextAttemptAt, attemptCount',
     });
   }
 }
