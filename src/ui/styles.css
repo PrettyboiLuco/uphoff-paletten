@@ -758,3 +758,56 @@ button:disabled { opacity: .48; cursor: default; }
   .health-grid { grid-template-columns: 1fr 1fr; }
   .ops-actions { grid-template-columns: 1fr; }
 }
+
+.sync-initializing .sync-dot,
+.sync-not_configured .sync-dot,
+.sync-awaiting_approval .sync-dot {
+  background: var(--warning);
+  box-shadow: 0 0 12px rgba(240,184,76,.45);
+}
+
+.sync-offline .sync-dot {
+  background: var(--warning);
+  box-shadow: 0 0 12px rgba(240,184,76,.45);
+}
+
+.sync-error .sync-dot {
+  background: var(--outgoing);
+  box-shadow: 0 0 12px rgba(255,101,101,.45);
+}
+
+.cloud-banner {
+  min-height: 36px;
+  margin-bottom: 6px;
+  padding: 7px 10px;
+  border: 1px solid rgba(240,184,76,.32);
+  border-radius: 10px;
+  background: rgba(240,184,76,.08);
+  color: #e8d7b1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  overflow: hidden;
+}
+
+.cloud-banner strong {
+  color: var(--warning);
+  font-family: "SFMono-Regular", ui-monospace, monospace;
+  font-size: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-height: 680px) and (orientation: portrait) {
+  .cloud-banner {
+    position: fixed;
+    z-index: 30;
+    left: 8px;
+    right: 8px;
+    top: calc(34px + var(--safe-top));
+    min-height: 28px;
+    padding: 4px 7px;
+  }
+}
