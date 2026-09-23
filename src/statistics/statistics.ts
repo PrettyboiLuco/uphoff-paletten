@@ -293,36 +293,39 @@ export function stockSeries(
   range: TimeRange,
   sorte?: string,
 ): StockPoint[] {
-  const activities = effectiveActivities(events)
-    .filter((activity) => !sorte || activity.sorte === sorte)
-    .sort((a, b) =>
-      Temporal.Instant.compare(
-        Temporal.Instant.from(a.effectiveBookingTime),
-        Temporal.Instant.from(b.effectiveBookingTime),
-      ),
+  const deltasByInstant = new Map<string, number>();
+
+  for (const activity of effectiveActivities(events)) {
+    if (sorte && activity.sorte !== sorte) continue;
+    const instant = Temporal.Instant.from(activity.effectiveBookingTime).toString();
+    deltasByInstant.set(
+      instant,
+      (deltasByInstant.get(instant) ?? 0) + activity.delta,
     );
+  }
+
+  const entries = [...deltasByInstant.entries()].sort(([a], [b]) =>
+    Temporal.Instant.compare(Temporal.Instant.from(a), Temporal.Instant.from(b)),
+  );
 
   let bestand = 0;
-  for (const activity of activities) {
+  for (const [at, delta] of entries) {
     if (
       Temporal.Instant.compare(
-        Temporal.Instant.from(activity.effectiveBookingTime),
+        Temporal.Instant.from(at),
         Temporal.Instant.from(range.start),
       ) < 0
     ) {
-      bestand += activity.delta;
+      bestand += delta;
     }
   }
 
   const points: StockPoint[] = [{ at: range.start, bestand }];
 
-  for (const activity of activities) {
-    if (!inRange(activity.effectiveBookingTime, range)) continue;
-    bestand += activity.delta;
-    points.push({
-      at: activity.effectiveBookingTime,
-      bestand,
-    });
+  for (const [at, delta] of entries) {
+    if (!inRange(at, range)) continue;
+    bestand += delta;
+    points.push({ at, bestand });
   }
 
   points.push({ at: range.end, bestand });
