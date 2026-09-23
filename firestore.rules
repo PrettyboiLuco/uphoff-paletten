@@ -29,6 +29,10 @@ service cloud.firestore {
       return get(configPath(version)).data.stapel[sorte];
     }
 
+    function configHasSort(version, sorte) {
+      return get(configPath(version)).data.stapel.keys().hasAny([sorte]);
+    }
+
     function allowedEventKeys() {
       return [
         'id',
@@ -49,15 +53,25 @@ service cloud.firestore {
 
     function optionalFieldsValid() {
       return (!request.resource.data.keys().hasAny(['person'])
-          || request.resource.data.person is string)
+          || (request.resource.data.person is string
+            && request.resource.data.person.size() > 0
+            && request.resource.data.person.size() <= 100))
         && (!request.resource.data.keys().hasAny(['vorgangId'])
-          || request.resource.data.vorgangId is string)
+          || (request.resource.data.vorgangId is string
+            && request.resource.data.vorgangId.size() > 0
+            && request.resource.data.vorgangId.size() <= 128))
         && (!request.resource.data.keys().hasAny(['korrigiertId'])
-          || request.resource.data.korrigiertId is string)
+          || (request.resource.data.korrigiertId is string
+            && request.resource.data.korrigiertId.size() > 0
+            && request.resource.data.korrigiertId.size() <= 128))
         && (!request.resource.data.keys().hasAny(['umbuchungId'])
-          || request.resource.data.umbuchungId is string)
+          || (request.resource.data.umbuchungId is string
+            && request.resource.data.umbuchungId.size() > 0
+            && request.resource.data.umbuchungId.size() <= 128))
         && (!request.resource.data.keys().hasAny(['umbuchungPartnerId'])
-          || request.resource.data.umbuchungPartnerId is string);
+          || (request.resource.data.umbuchungPartnerId is string
+            && request.resource.data.umbuchungPartnerId.size() > 0
+            && request.resource.data.umbuchungPartnerId.size() <= 128));
     }
 
     function commonEventValid(eventId) {
@@ -75,6 +89,8 @@ service cloud.firestore {
         && request.resource.data.id == eventId
         && request.resource.data.geraetId == request.auth.uid
         && request.resource.data.sorte is string
+        && request.resource.data.sorte.size() > 0
+        && request.resource.data.sorte.size() <= 64
         && request.resource.data.art is string
         && request.resource.data.delta is int
         && request.resource.data.buchungszeit is timestamp
@@ -83,7 +99,11 @@ service cloud.firestore {
         && request.resource.data.buchungszeit <= request.time + duration.value(5, 'm')
         && request.resource.data.konfigVersion is string
         && optionalFieldsValid()
-        && configExists(request.resource.data.konfigVersion);
+        && configExists(request.resource.data.konfigVersion)
+        && configHasSort(
+          request.resource.data.konfigVersion,
+          request.resource.data.sorte
+        );
     }
 
     function validZugang() {
