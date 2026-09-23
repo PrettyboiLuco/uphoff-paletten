@@ -3,8 +3,10 @@ import type { StoredEvent } from '../src/domain/types';
 import {
   berlinDateKey,
   comparePeriod,
+  dayRangeForKey,
   effectiveActivities,
   isoWeekKey,
+  monthRangeForKey,
   periodWindow,
   statisticsForRange,
   stockSeries,
@@ -58,6 +60,26 @@ describe('E3 statistics and calendar correctness', () => {
 
     const stats = statisticsForRange(events, window.current);
     expect(stats.dazugekommen).toBe(30);
+  });
+
+  it('builds Berlin calendar day ranges correctly on DST transition days', () => {
+    const spring = dayRangeForKey('2026-03-29');
+    const autumn = dayRangeForKey('2026-10-25');
+
+    expect(spring.start).toBe('2026-03-28T23:00:00Z');
+    expect(spring.end).toBe('2026-03-29T22:00:00Z');
+    expect(autumn.start).toBe('2026-10-24T22:00:00Z');
+    expect(autumn.end).toBe('2026-10-25T23:00:00Z');
+  });
+
+  it('builds month ranges from Berlin calendar boundaries, not UTC month boundaries', () => {
+    const september = monthRangeForKey('2026-09');
+    const october = monthRangeForKey('2026-10');
+
+    expect(september.start).toBe('2026-08-31T22:00:00Z');
+    expect(september.end).toBe('2026-09-30T22:00:00Z');
+    expect(october.start).toBe('2026-09-30T22:00:00Z');
+    expect(october.end).toBe('2026-10-31T23:00:00Z');
   });
 
   it('produces correct ISO week keys across year boundaries', () => {
