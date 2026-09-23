@@ -10,7 +10,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  startAfter,
+  startAt,
   Timestamp,
   type Firestore,
 } from 'firebase/firestore';
@@ -168,7 +168,7 @@ export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {
         collection(this.db, 'events'),
         orderBy('serverzeit', 'asc'),
         orderBy(documentId(), 'asc'),
-        startAfter(timestampFromExactIso(cursor.serverzeit), cursor.id),
+        startAt(timestampFromExactIso(cursor.serverzeit)),
       ),
     );
     return snapshot.docs.map((item) => fromFirestoreEvent(item.data()));
