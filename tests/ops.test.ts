@@ -148,8 +148,22 @@ describe('E6 backup, self-test and operations', () => {
   it('rejects malformed backup before writing anything', async () => {
     const target = db('e6-malformed');
 
+    const malformed = {
+      manifest: {
+        schemaVersion: 1,
+        exportedAt: '2026-09-23T12:00:00Z',
+        app: 'uphoff-paletten',
+        eventCount: 1,
+        outboxCount: 0,
+        conflictCount: 0,
+      },
+      events: [{ id: 'x' }],
+      outbox: [],
+      conflicts: [],
+    };
+
     await expect(
-      restoreJsonBackup(target, '{"manifest":{"schemaVersion":1,"app":"uphoff-paletten"},"events":[{"id":"x"}],"outbox":[],"conflicts":[]}'),
+      restoreJsonBackup(target, JSON.stringify(malformed)),
     ).rejects.toThrow('invalid-backup-events');
 
     expect(await target.events.count()).toBe(0);
