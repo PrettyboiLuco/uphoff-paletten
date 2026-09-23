@@ -21,9 +21,13 @@ export interface PalletEvent {
   vorgangId?: string;
   korrigiertId?: string;
   umbuchungId?: string;
-  syncState: SyncState;
   clockSkewFlag?: boolean;
+}
+
+export interface StoredEvent extends PalletEvent {
+  syncState: SyncState;
   createdLocalAt: string;
+  rejectionReason?: string;
 }
 
 export interface Projection {
