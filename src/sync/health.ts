@@ -34,10 +34,11 @@ export interface SyncHealth {
   pendingCount: number;
   rejectedCount: number;
   lastSuccessfulSyncAt?: string;
+  lastRetryError?: string;
 }
 
 export async function getSyncHealth(db: UphoffLocalDb): Promise<SyncHealth> {
-  const [pendingCount, rejectedCount, meta] = await Promise.all([
+  const [pendingCount, rejectedCount, meta, outbox] = await Promise.all([
     db.events
       .filter(
         (event) =>
@@ -46,14 +47,33 @@ export async function getSyncHealth(db: UphoffLocalDb): Promise<SyncHealth> {
       .count(),
     db.events.where('syncState').equals('REJECTED').count(),
     db.meta.get('lastSuccessfulSyncAt'),
+    db.outbox.toArray(),
   ]);
+
+  const latestFailed = outbox
+    .filter(
+      (item) =>
+        item.lastError !== undefined
+        && item.lastAttemptAt !== undefined,
+    )
+    .sort(
+      (a, b) =>
+        (b.lastAttemptAt ?? 0) - (a.lastAttemptAt ?? 0),
+    )[0];
+
+  const extras = {
+    ...(meta ? { lastSuccessfulSyncAt: meta.value } : {}),
+    ...(latestFailed?.lastError
+      ? { lastRetryError: latestFailed.lastError }
+      : {}),
+  };
 
   if (rejectedCount > 0) {
     return {
       state: 'REJECTED',
       pendingCount,
       rejectedCount,
-      ...(meta ? { lastSuccessfulSyncAt: meta.value } : {}),
+      ...extras,
     };
   }
 
@@ -62,7 +82,7 @@ export async function getSyncHealth(db: UphoffLocalDb): Promise<SyncHealth> {
       state: 'PENDING',
       pendingCount,
       rejectedCount,
-      ...(meta ? { lastSuccessfulSyncAt: meta.value } : {}),
+      ...extras,
     };
   }
 
@@ -71,6 +91,7 @@ export async function getSyncHealth(db: UphoffLocalDb): Promise<SyncHealth> {
       state: 'NEVER_SYNCED',
       pendingCount,
       rejectedCount,
+      ...extras,
     };
   }
 
@@ -78,6 +99,6 @@ export async function getSyncHealth(db: UphoffLocalDb): Promise<SyncHealth> {
     state: 'SYNCHRON',
     pendingCount,
     rejectedCount,
-    lastSuccessfulSyncAt: meta.value,
+    ...extras,
   };
 }
