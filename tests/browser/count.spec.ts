@@ -35,8 +35,8 @@ test('seven pallet rows exist and every booking control has a large hit area', a
   for (const button of await page.locator('.pallet-row button').all()) {
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThanOrEqual(54);
-    expect(box!.height).toBeGreaterThanOrEqual(56);
+    expect(box!.width).toBeGreaterThanOrEqual(60);
+    expect(box!.height).toBeGreaterThanOrEqual(60);
   }
 });
 
