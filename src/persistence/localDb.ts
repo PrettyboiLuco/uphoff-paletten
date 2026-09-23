@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie';
 import type { StoredEvent } from '../domain/types';
 import type { OutboxItem } from '../sync/types';
 import type { AggregateRevision } from '../statistics/aggregates';
+import type { OperationalError } from '../ops/types';
 import { project } from '../domain/projection';
 
 export interface LocalMeta {
@@ -24,6 +25,7 @@ export class UphoffLocalDb extends Dexie {
   outbox!: EntityTable<OutboxItem, 'eventId'>;
   conflicts!: EntityTable<SyncConflict, 'id'>;
   aggregates!: EntityTable<AggregateRevision, 'id'>;
+  errors!: EntityTable<OperationalError, 'id'>;
 
   constructor(name: string) {
     super(name);
@@ -54,6 +56,15 @@ export class UphoffLocalDb extends Dexie {
       outbox: '&eventId, status, nextAttemptAt, attemptCount',
       conflicts: '&id, eventId, detectedAt',
       aggregates: '&id, [bucketType+bucketKey], revision, generatedAt',
+    });
+
+    this.version(5).stores({
+      events: '&id, buchungszeit, sorte, art, syncState, geraetId, konfigVersion, vorgangId',
+      meta: '&key',
+      outbox: '&eventId, status, nextAttemptAt, attemptCount',
+      conflicts: '&id, eventId, detectedAt',
+      aggregates: '&id, [bucketType+bucketKey], revision, generatedAt',
+      errors: '&id, occurredAt, severity, code',
     });
   }
 }
