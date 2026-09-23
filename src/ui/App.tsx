@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { listEvents } from '../persistence/localDb';
 import {
   comparePeriod,
@@ -166,7 +166,7 @@ export function App() {
   };
 
 
-  const onPagePointerDown = (event: React.PointerEvent<HTMLElement>) => {
+  const onPagePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
     if (target.closest('button, select, input, a')) {
       swipeStartX.current = null;
