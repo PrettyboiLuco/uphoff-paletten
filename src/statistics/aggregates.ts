@@ -65,6 +65,10 @@ export async function appendAggregateRevision(
   const prior = await store.list(bucketType, bucketKey);
   const affected = eventsAffectingRange(events, range);
 
+  if (affected.some((event) => event.syncState !== 'CONFIRMED')) {
+    throw new Error('aggregate-requires-confirmed-events');
+  }
+
   const revision: AggregateRevision = {
     id: `${bucketType.toLowerCase()}_${bucketKey}_r${prior.length + 1}`,
     bucketType,
