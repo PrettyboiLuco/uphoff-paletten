@@ -8,10 +8,20 @@ export interface LocalMeta {
   value: string;
 }
 
+export interface SyncConflict {
+  id: string;
+  eventId: string;
+  detectedAt: string;
+  reason: 'ID_CONTENT_CONFLICT';
+  localEvent: StoredEvent;
+  remoteEvent: StoredEvent;
+}
+
 export class UphoffLocalDb extends Dexie {
   events!: EntityTable<StoredEvent, 'id'>;
   meta!: EntityTable<LocalMeta, 'key'>;
   outbox!: EntityTable<OutboxItem, 'eventId'>;
+  conflicts!: EntityTable<SyncConflict, 'id'>;
 
   constructor(name: string) {
     super(name);
@@ -19,6 +29,13 @@ export class UphoffLocalDb extends Dexie {
       events: '&id, buchungszeit, sorte, art, syncState, geraetId, konfigVersion',
       meta: '&key',
       outbox: '&eventId, status, nextAttemptAt, attemptCount',
+    });
+
+    this.version(2).stores({
+      events: '&id, buchungszeit, sorte, art, syncState, geraetId, konfigVersion',
+      meta: '&key',
+      outbox: '&eventId, status, nextAttemptAt, attemptCount',
+      conflicts: '&id, eventId, detectedAt',
     });
   }
 }
