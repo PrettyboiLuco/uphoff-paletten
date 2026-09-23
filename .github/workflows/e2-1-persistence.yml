@@ -1,0 +1,20 @@
+name: E2.1 Persistence Gate
+
+on:
+  push:
+    branches:
+      - build/pwa-v1
+  pull_request:
+
+jobs:
+  persistence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm run test:e21
