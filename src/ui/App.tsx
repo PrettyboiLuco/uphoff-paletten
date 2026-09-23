@@ -9,6 +9,9 @@ import {
   type StatisticsPeriodKind,
 } from '../statistics/statistics';
 import { LocalBookingController, type BookingAction } from './bookingController';
+import { LayoutEditor } from '../layout/LayoutEditor';
+import { defaultLayout, profileForViewport, type LayoutDocument, type LayoutItem, type LayoutProfile } from '../layout/layout';
+import { loadLayout } from '../layout/storage';
 import { PALLET_TYPES } from './config';
 import { syncLabel, type CountMode } from './logic';
 
@@ -56,6 +59,10 @@ export function App() {
   const [sortFilter, setSortFilter] = useState<string>('ALL');
   const [stats, setStats] = useState<PeriodStatistics>(emptyStats);
   const [comparison, setComparison] = useState<PeriodComparison>(emptyComparison);
+  const initialProfile = profileForViewport(typeof window === 'undefined' ? 390 : window.innerWidth);
+  const [layoutProfile] = useState<LayoutProfile>(initialProfile);
+  const [layout, setLayout] = useState<LayoutDocument>(() => defaultLayout(initialProfile));
+  const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
 
   const refreshStatistics = async (
     controller: LocalBookingController,
@@ -82,6 +89,7 @@ export function App() {
         const pending = await controller.db.outbox.count();
         setPendingCount(pending);
         setSyncState(pending > 0 ? 'PENDING' : 'NEVER_SYNCED');
+        setLayout(await loadLayout(controller.db, layoutProfile));
         await refreshStatistics(controller);
       })
       .catch(() => {
@@ -185,6 +193,16 @@ export function App() {
     setTab(delta < 0 ? 'STATS' : 'COUNT');
   };
 
+
+  const blockStyle = (id: LayoutItem['id']) => {
+    const item = layout.items.find((candidate) => candidate.id === id);
+    if (!item || item.w === layout.cols && item.x === 0) return undefined;
+    return {
+      width: `${(item.w / layout.cols) * 100}%`,
+      marginLeft: `${(item.x / layout.cols) * 100}%`,
+    };
+  };
+
   const outgoingChange = comparison.weggekommen.percentChange;
   const outgoingComparisonText = outgoingChange === null
     ? 'Keine belastbare Vorperiode'
@@ -204,9 +222,14 @@ export function App() {
             <span>PALETTENSERVICE</span>
           </div>
         </div>
-        <div className={`sync-pill sync-${syncState.toLowerCase()}`} aria-label="Synchronisationsstatus">
-          <span className="sync-dot" />
-          {syncLabel(syncState, pendingCount)}
+        <div className="header-actions">
+          <button className="layout-open-button" onClick={() => setLayoutEditorOpen(true)}>
+            LAYOUT
+          </button>
+          <div className={`sync-pill sync-${syncState.toLowerCase()}`} aria-label="Synchronisationsstatus">
+            <span className="sync-dot" />
+            {syncLabel(syncState, pendingCount)}
+          </div>
         </div>
       </header>
 
@@ -214,12 +237,12 @@ export function App() {
 
       {tab === 'COUNT' ? (
         <section className="count-page">
-          <div className="hero-total">
+          <div className="hero-total" style={blockStyle('TOTAL')}>
             <span>PALETTEN INSGESAMT</span>
             <strong aria-live="polite">{total.toLocaleString('de-DE')}</strong>
           </div>
 
-          <div className="mode-switch" role="group" aria-label="Buchungsmodus">
+          <div className="mode-switch" role="group" aria-label="Buchungsmodus" style={blockStyle('MODE')}>
             {(['EINGANG', 'AUSGANG'] as const).map((value) => (
               <button
                 key={value}
@@ -269,7 +292,7 @@ export function App() {
             ))}
           </div>
 
-          <div className="last-action">
+          <div className="last-action" style={blockStyle('LAST_ACTION')}>
             <div>
               <span>LETZTER VORGANG</span>
               <strong>
@@ -347,6 +370,15 @@ export function App() {
               })}
           </div>
         </section>
+      )}
+
+      {layoutEditorOpen && controllerRef.current && (
+        <LayoutEditor
+          db={controllerRef.current.db}
+          profile={layoutProfile}
+          onSaved={setLayout}
+          onClose={() => setLayoutEditorOpen(false)}
+        />
       )}
 
       <nav className="bottom-nav" aria-label="Hauptnavigation">
