@@ -130,3 +130,42 @@ test('horizontal swipe changes main page without triggering booking controls', a
 
   await expect(page.locator('.stat-hero')).toBeVisible();
 });
+
+test('all critical count controls are physically visible inside the portrait viewport', async ({ page }) => {
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+
+  for (const locator of [
+    page.locator('.pallet-row').last(),
+    page.locator('.last-action'),
+    page.locator('.bottom-nav'),
+  ]) {
+    const box = await locator.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
+  }
+});
+
+test('statistics content is physically visible inside the portrait viewport', async ({ page }) => {
+  await page.getByRole('button', { name: 'STATISTIK' }).click();
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+
+  for (const locator of [
+    page.locator('.stat-hero'),
+    page.locator('.bar-chart'),
+    page.locator('.bottom-nav'),
+  ]) {
+    const box = await locator.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
+  }
+});
+
+test('landscape state blocks counting with an explicit portrait instruction', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(page.locator('.orientation-warning')).toBeVisible();
+  await expect(page.locator('.orientation-warning')).toContainText('HOCHFORMAT VERWENDEN');
+});
