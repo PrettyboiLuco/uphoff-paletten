@@ -11,7 +11,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, type Firestore } from 'firebase/firestore';
 import type { PalletEvent } from '../src/domain/types';
 import { FirestoreRemoteEventStore } from '../src/sync/firestoreRemoteStore';
 import { RemoteCreateError } from '../src/sync/types';
@@ -70,7 +70,7 @@ function event(overrides: Partial<PalletEvent> = {}): PalletEvent {
 describe('release integration: Firestore adapter + real rules', () => {
   it('creates, reads and lists a valid event through the production adapter', async () => {
     const db = env.authenticatedContext('phone-a').firestore();
-    const remote = new FirestoreRemoteEventStore(db);
+    const remote = new FirestoreRemoteEventStore(db as unknown as Firestore);
 
     await expect(remote.createEvent(event())).resolves.toEqual({
       status: 'CREATED',
@@ -89,7 +89,7 @@ describe('release integration: Firestore adapter + real rules', () => {
 
   it('maps an idempotent second create to ALREADY_EXISTS instead of overwriting', async () => {
     const db = env.authenticatedContext('phone-a').firestore();
-    const remote = new FirestoreRemoteEventStore(db);
+    const remote = new FirestoreRemoteEventStore(db as unknown as Firestore);
 
     await remote.createEvent(event());
 
@@ -107,7 +107,7 @@ describe('release integration: Firestore adapter + real rules', () => {
 
   it('maps a mismatched device identity to a permanent permission error', async () => {
     const db = env.authenticatedContext('phone-a').firestore();
-    const remote = new FirestoreRemoteEventStore(db);
+    const remote = new FirestoreRemoteEventStore(db as unknown as Firestore);
 
     try {
       await remote.createEvent(
