@@ -44,6 +44,7 @@ const PERIODS: readonly { id: StatisticsPeriodKind; label: string }[] = [
 
 export function App() {
   const controllerRef = useRef<LocalBookingController | null>(null);
+  const swipeStartX = useRef<number | null>(null);
   const [tab, setTab] = useState<Tab>('COUNT');
   const [mode, setMode] = useState<CountMode>('EINGANG');
   const [stocks, setStocks] = useState<Record<string, number>>({});
@@ -164,13 +165,33 @@ export function App() {
     }
   };
 
+
+  const onPagePointerDown = (event: React.PointerEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('button, select, input, a')) {
+      swipeStartX.current = null;
+      return;
+    }
+    swipeStartX.current = event.clientX;
+  };
+
+  const onPagePointerUp = (event: React.PointerEvent<HTMLElement>) => {
+    const start = swipeStartX.current;
+    swipeStartX.current = null;
+    if (start === null) return;
+
+    const delta = event.clientX - start;
+    if (Math.abs(delta) < 70) return;
+    setTab(delta < 0 ? 'STATS' : 'COUNT');
+  };
+
   const outgoingChange = comparison.weggekommen.percentChange;
   const outgoingComparisonText = outgoingChange === null
     ? 'Keine belastbare Vorperiode'
     : `${outgoingChange >= 0 ? '+' : ''}${Math.round(outgoingChange)} % zur Vorperiode`;
 
   return (
-    <main className="app-shell" data-mode={mode.toLowerCase()}>
+    <main className="app-shell" data-mode={mode.toLowerCase()} onPointerDown={onPagePointerDown} onPointerUp={onPagePointerUp}>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">U</span>
