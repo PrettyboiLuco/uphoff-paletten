@@ -38,7 +38,8 @@ test('installed shell reloads while fully offline after first online load', asyn
   ).toBe(true);
 
   await context.setOffline(true);
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => window.location.reload());
+  await page.waitForLoadState('domcontentloaded');
 
   await expect(page.getByText('UPHOFF')).toBeVisible();
   await expect(page.getByRole('button', { name: 'EINGANG' })).toBeVisible();
@@ -63,7 +64,8 @@ test('offline booking survives an offline page reload from the production servic
   await expect(row.locator('.row-stock strong')).toHaveText('15');
   await expect(page.locator('.sync-pill')).toContainText('1 ausstehend');
 
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => window.location.reload());
+  await page.waitForLoadState('domcontentloaded');
   await expect(page.locator('.pallet-row').first().locator('.row-stock strong')).toHaveText('15');
   await expect(page.locator('.sync-pill')).toContainText('1 ausstehend');
 });
