@@ -123,9 +123,9 @@ test('horizontal swipe changes main page without triggering booking controls', a
   const box = await hero.boundingBox();
   expect(box).not.toBeNull();
 
-  await page.mouse.move(box!.x + box!.width - 20, box!.y + box!.height / 2);
+  await page.mouse.move(box!.x + Math.min(90, box!.width * 0.35), box!.y + box!.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box!.x + 20, box!.y + box!.height / 2, { steps: 8 });
+  await page.mouse.move(box!.x + 5, box!.y + box!.height / 2, { steps: 8 });
   await page.mouse.up();
 
   await expect(page.locator('.stat-hero')).toBeVisible();
