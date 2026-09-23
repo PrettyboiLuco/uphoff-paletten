@@ -47,6 +47,14 @@ export class UphoffLocalDb extends Dexie {
       conflicts: '&id, eventId, detectedAt',
       aggregates: '&id, [bucketType+bucketKey], revision, generatedAt',
     });
+
+    this.version(4).stores({
+      events: '&id, buchungszeit, sorte, art, syncState, geraetId, konfigVersion, vorgangId',
+      meta: '&key',
+      outbox: '&eventId, status, nextAttemptAt, attemptCount',
+      conflicts: '&id, eventId, detectedAt',
+      aggregates: '&id, [bucketType+bucketKey], revision, generatedAt',
+    });
   }
 }
 
