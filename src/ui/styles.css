@@ -160,3 +160,22 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .001ms !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
 }
+
+.sync-pending .sync-dot { background: var(--warning); box-shadow: 0 0 12px rgba(240,184,76,.45); }
+.sync-rejected .sync-dot { background: var(--outgoing); box-shadow: 0 0 12px rgba(255,101,101,.45); }
+.sync-never_synced .sync-dot { background: var(--muted); box-shadow: none; }
+
+.error-banner {
+  min-height: 42px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,101,101,.35);
+  border-radius: 11px;
+  background: rgba(255,101,101,.09);
+  color: #ffd1d1;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+}
+
+button:disabled { opacity: .48; cursor: default; }
