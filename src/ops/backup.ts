@@ -18,21 +18,83 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const EVENT_ARTS = new Set([
+  'ZUGANG',
+  'ABGANG',
+  'KORREKTUR',
+  'ANFANGSBESTAND',
+  'INVENTUR',
+  'UMBUCHUNG',
+]);
+
+function validIso(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function optionalString(
+  record: Record<string, unknown>,
+  key: string,
+  maxLength: number,
+): boolean {
+  const value = record[key];
+  return (
+    value === undefined
+    || (
+      typeof value === 'string'
+      && value.length > 0
+      && value.length <= maxLength
+    )
+  );
+}
+
 function isStoredEvent(value: unknown): value is StoredEvent {
   if (!isRecord(value)) return false;
-  return (
+
+  const art = value.art;
+  const common = (
     typeof value.id === 'string'
+    && value.id.length > 0
+    && value.id.length <= 128
     && typeof value.geraetId === 'string'
+    && value.geraetId.length > 0
+    && value.geraetId.length <= 128
     && typeof value.sorte === 'string'
-    && typeof value.art === 'string'
+    && value.sorte.length > 0
+    && value.sorte.length <= 64
+    && typeof art === 'string'
+    && EVENT_ARTS.has(art)
     && typeof value.delta === 'number'
     && Number.isInteger(value.delta)
-    && typeof value.buchungszeit === 'string'
+    && validIso(value.buchungszeit)
     && typeof value.konfigVersion === 'string'
+    && value.konfigVersion.length > 0
+    && value.konfigVersion.length <= 64
     && typeof value.syncState === 'string'
     && ['LOCAL_ONLY', 'PENDING', 'CONFIRMED', 'REJECTED'].includes(value.syncState)
-    && typeof value.createdLocalAt === 'string'
+    && validIso(value.createdLocalAt)
+    && (value.serverzeit === undefined || validIso(value.serverzeit))
+    && (value.clockSkewFlag === undefined || typeof value.clockSkewFlag === 'boolean')
+    && optionalString(value, 'person', 100)
+    && optionalString(value, 'vorgangId', 128)
+    && optionalString(value, 'korrigiertId', 128)
+    && optionalString(value, 'umbuchungId', 128)
+    && optionalString(value, 'umbuchungPartnerId', 128)
+    && optionalString(value, 'rejectionReason', 128)
   );
+
+  if (!common) return false;
+  if (art === 'KORREKTUR' && typeof value.korrigiertId !== 'string') return false;
+  if (
+    art === 'UMBUCHUNG'
+    && (
+      typeof value.umbuchungId !== 'string'
+      || typeof value.umbuchungPartnerId !== 'string'
+    )
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function isOutboxItem(value: unknown): value is OutboxItem {
@@ -70,6 +132,10 @@ function validateBackup(value: unknown): {
   if (
     value.manifest.schemaVersion !== 1
     || value.manifest.app !== 'uphoff-paletten'
+    || !validIso(value.manifest.exportedAt)
+    || !Number.isInteger(value.manifest.eventCount)
+    || !Number.isInteger(value.manifest.outboxCount)
+    || !Number.isInteger(value.manifest.conflictCount)
     || !Array.isArray(value.events)
     || !Array.isArray(value.outbox)
     || !Array.isArray(value.conflicts)
@@ -81,8 +147,22 @@ function validateBackup(value: unknown): {
   if (!value.outbox.every(isOutboxItem)) throw new Error('invalid-backup-outbox');
   if (!value.conflicts.every(isSyncConflict)) throw new Error('invalid-backup-conflicts');
 
+  if (
+    value.manifest.eventCount !== value.events.length
+    || value.manifest.outboxCount !== value.outbox.length
+    || value.manifest.conflictCount !== value.conflicts.length
+  ) {
+    throw new Error('backup-manifest-count-mismatch');
+  }
+
   const eventIds = new Set(value.events.map((event) => event.id));
   if (eventIds.size !== value.events.length) throw new Error('duplicate-event-id-in-backup');
+
+  const outboxIds = new Set(value.outbox.map((item) => item.eventId));
+  if (outboxIds.size !== value.outbox.length) throw new Error('duplicate-outbox-id-in-backup');
+
+  const conflictIds = new Set(value.conflicts.map((item) => item.id));
+  if (conflictIds.size !== value.conflicts.length) throw new Error('duplicate-conflict-id-in-backup');
 
   for (const item of value.outbox) {
     if (!eventIds.has(item.eventId)) throw new Error('orphan-outbox-in-backup');
