@@ -7,7 +7,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e21": "vitest run tests/persistence.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e22": "vitest run tests/outbox.test.ts"
   },
   "dependencies": {
     "dexie": "^4.2.0"
