@@ -86,28 +86,34 @@ export class LocalBookingController {
     projection: Awaited<ReturnType<typeof loadProjection>>;
     processId: string;
   }> {
+    const tappedAt = new Date();
+    const eventId = crypto.randomUUID();
+
     const execute = async () => {
-      const now = new Date();
       const processId = this.processForTap(
         mode,
         pallet.id,
         action,
-        now.getTime(),
+        tappedAt.getTime(),
       );
       const event: StoredEvent = {
-        id: crypto.randomUUID(),
+        id: eventId,
         geraetId: this.deviceId,
         sorte: pallet.id,
         art: mode === 'EINGANG' ? 'ZUGANG' : 'ABGANG',
         delta: effectForTap(mode, action, pallet.stackSize),
-        buchungszeit: now.toISOString(),
+        buchungszeit: tappedAt.toISOString(),
         konfigVersion: 'v1',
         vorgangId: processId,
         syncState: 'LOCAL_ONLY',
-        createdLocalAt: now.toISOString(),
+        createdLocalAt: tappedAt.toISOString(),
       };
 
-      const result = await persistAndQueueEvent(this.db, event, now.getTime());
+      const result = await persistAndQueueEvent(
+        this.db,
+        event,
+        tappedAt.getTime(),
+      );
       if (result.status !== 'QUEUED') {
         throw new Error(`booking-not-queued:${result.status}`);
       }
