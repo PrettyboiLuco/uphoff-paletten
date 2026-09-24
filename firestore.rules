@@ -87,6 +87,8 @@ service cloud.firestore {
           'konfigVersion'
         ])
         && request.resource.data.id == eventId
+        && eventId.size() > 0
+        && eventId.size() <= 128
         && request.resource.data.geraetId == request.auth.uid
         && request.resource.data.sorte is string
         && request.resource.data.sorte.size() > 0
@@ -98,6 +100,8 @@ service cloud.firestore {
         && request.resource.data.serverzeit == request.time
         && request.resource.data.buchungszeit <= request.time + duration.value(5, 'm')
         && request.resource.data.konfigVersion is string
+        && request.resource.data.konfigVersion.size() > 0
+        && request.resource.data.konfigVersion.size() <= 64
         && optionalFieldsValid()
         && configExists(request.resource.data.konfigVersion)
         && configHasSort(
@@ -137,15 +141,30 @@ service cloud.firestore {
     }
 
     function validCorrection(eventId) {
+      let original = get(
+        originalPath(request.resource.data.korrigiertId)
+      ).data;
+      let normalOriginal = original.art == 'ZUGANG'
+        || original.art == 'ABGANG';
+      let adminOriginal = original.art == 'ANFANGSBESTAND'
+        || original.art == 'INVENTUR';
+
       return request.resource.data.art == 'KORREKTUR'
         && request.resource.data.keys().hasAll(['korrigiertId'])
         && exists(originalPath(request.resource.data.korrigiertId))
         && eventId == 'korr_' + request.resource.data.korrigiertId
-        && get(originalPath(request.resource.data.korrigiertId)).data.art != 'KORREKTUR'
-        && request.resource.data.sorte
-          == get(originalPath(request.resource.data.korrigiertId)).data.sorte
-        && request.resource.data.delta
-          == -get(originalPath(request.resource.data.korrigiertId)).data.delta;
+        && (normalOriginal || adminOriginal)
+        && (
+          (normalOriginal
+            && (
+              original.geraetId == request.auth.uid
+              || isAdmin()
+            ))
+          || (adminOriginal && isAdmin())
+        )
+        && request.resource.data.sorte == original.sorte
+        && request.resource.data.konfigVersion == original.konfigVersion
+        && request.resource.data.delta == -original.delta;
     }
 
     function validAdminAdjustment() {
@@ -189,9 +208,60 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    function validConfig() {
+      return request.resource.data.keys().hasOnly(['stapel'])
+        && request.resource.data.stapel is map
+        && request.resource.data.stapel.keys().hasOnly([
+          'typ-1',
+          'typ-2',
+          'typ-3',
+          'typ-4',
+          'typ-5',
+          'typ-6',
+          'typ-7'
+        ])
+        && request.resource.data.stapel.keys().hasAll([
+          'typ-1',
+          'typ-2',
+          'typ-3',
+          'typ-4',
+          'typ-5',
+          'typ-6',
+          'typ-7'
+        ])
+        && (
+          request.resource.data.stapel['typ-1'] == 15
+          || request.resource.data.stapel['typ-1'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-2'] == 15
+          || request.resource.data.stapel['typ-2'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-3'] == 15
+          || request.resource.data.stapel['typ-3'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-4'] == 15
+          || request.resource.data.stapel['typ-4'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-5'] == 15
+          || request.resource.data.stapel['typ-5'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-6'] == 15
+          || request.resource.data.stapel['typ-6'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-7'] == 15
+          || request.resource.data.stapel['typ-7'] == 17
+        );
+    }
+
     match /configs/{version} {
       allow read: if isActiveDevice();
-      allow create: if isAdmin();
+      allow create: if isAdmin() && validConfig();
       allow update, delete: if false;
     }
 
