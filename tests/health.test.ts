@@ -60,6 +60,24 @@ describe('sync health', () => {
     await database.close();
   });
 
+  it('reports stale when the stored sync timestamp is implausibly far in the future', async () => {
+    const database = db('health-future');
+    await database.meta.put({
+      key: 'lastSuccessfulSyncAt',
+      value: '2026-09-24T07:00:00Z',
+    });
+
+    const health = await getSyncHealth(
+      database,
+      Date.parse('2026-09-24T06:40:00Z'),
+      10 * 60_000,
+    );
+
+    expect(health.state).toBe('STALE');
+    await database.close();
+  });
+
+
   it('keeps pending and rejected states higher priority than staleness', async () => {
     const database = db('health-priority');
     await database.meta.put({
