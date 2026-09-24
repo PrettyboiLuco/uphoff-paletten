@@ -92,12 +92,14 @@ async function saveRemoteCursor(
   db: UphoffLocalDb,
   candidate: RemoteCursor,
 ): Promise<void> {
-  const existing = await loadRemoteCursor(db);
-  if (existing && compareCursor(existing, candidate) >= 0) return;
+  await db.transaction('rw', db.meta, async () => {
+    const existing = await loadRemoteCursor(db);
+    if (existing && compareCursor(existing, candidate) >= 0) return;
 
-  await db.meta.put({
-    key: REMOTE_CURSOR_KEY,
-    value: JSON.stringify(candidate),
+    await db.meta.put({
+      key: REMOTE_CURSOR_KEY,
+      value: JSON.stringify(candidate),
+    });
   });
 }
 
@@ -234,15 +236,31 @@ export async function startRealtimeSync(
   ) => void | Promise<void>,
 ): Promise<RemoteUnsubscribe> {
   const cursor = await loadRemoteCursor(db);
+  let pending = Promise.resolve();
+  let failed = false;
 
+  const reportError = (error: unknown) => {
+    if (failed) return;
+    failed = true;
+    onError(error);
+  };
+
+  // Snapshot callbacks may overlap. A later cursor must never pass an event
+  // whose local write is still pending or has failed.
   return remoteStore.subscribeEvents(
-    async (event) => {
-      const result = await applyRemoteEvent(db, event, nowIso());
-      const nextCursor = cursorForEvent(event);
-      if (nextCursor) await saveRemoteCursor(db, nextCursor);
-      if (onApplied) await onApplied(result, event);
+    (event) => {
+      if (failed) return Promise.resolve();
+      const next = pending.then(async () => {
+        if (failed) return;
+        const result = await applyRemoteEvent(db, event, nowIso());
+        const nextCursor = cursorForEvent(event);
+        if (nextCursor) await saveRemoteCursor(db, nextCursor);
+        if (onApplied) await onApplied(result, event);
+      });
+      pending = next.catch(reportError);
+      return next;
     },
-    onError,
+    reportError,
     cursor,
   );
 }
