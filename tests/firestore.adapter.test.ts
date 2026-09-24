@@ -13,6 +13,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import { doc, setDoc, Timestamp, type Firestore } from 'firebase/firestore';
 import type { PalletEvent } from '../src/domain/types';
+import { validateServerPalletConfig } from '../src/sync/configValidation';
 import { FirestoreRemoteEventStore } from '../src/sync/firestoreRemoteStore';
 import { RemoteCreateError } from '../src/sync/types';
 
@@ -68,6 +69,37 @@ function event(overrides: Partial<PalletEvent> = {}): PalletEvent {
 }
 
 describe('release integration: Firestore adapter + real rules', () => {
+  it('validates the immutable server pallet config against the client stack map', async () => {
+    const db = env.authenticatedContext('phone-a').firestore() as unknown as Firestore;
+
+    await expect(
+      validateServerPalletConfig(db),
+    ).resolves.toMatchObject({
+      status: 'MATCH',
+    });
+
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'configs/v1'), {
+        stapel: {
+          'typ-1': 17,
+          'typ-2': 15,
+          'typ-3': 15,
+          'typ-4': 15,
+          'typ-5': 17,
+          'typ-6': 17,
+          'typ-7': 17,
+        },
+      });
+    });
+
+    await expect(
+      validateServerPalletConfig(db),
+    ).resolves.toMatchObject({
+      status: 'MISMATCH',
+    });
+  });
+
+
   it('creates, reads and lists a valid event through the production adapter', async () => {
     const db = env.authenticatedContext('phone-a').firestore();
     const remote = new FirestoreRemoteEventStore(db as unknown as Firestore);
