@@ -9,6 +9,7 @@ Stand: 2026-09-23
 4. Authentication -> Sign-in method -> **Anonymous** aktivieren. Für diese gerätegebundenen IDs **keine automatische Bereinigung alter anonymer Konten aktivieren**, solange diese IDs als dauerhafte Gerätefreigabe verwendet werden.
 5. Firestore Security Rules aus `firestore.rules` deployen.
 6. Web-App-Konfiguration in die fünf `VITE_...` Variablen der Hosting-Umgebung eintragen.
+7. `VITE_ALLOW_LOCAL_ONLY` in Produktion **nicht** auf `true` setzen. Ohne Cloud-Konfiguration sperrt die Produktions-App neue Buchungen bewusst, damit kein einzelnes Gerät zur einzigen Datenkopie wird.
 
 ## 2. App Check
 Für Produktion wird App Check mit **reCAPTCHA Enterprise** verwendet.
