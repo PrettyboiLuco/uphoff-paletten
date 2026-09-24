@@ -7,13 +7,6 @@ import {
 import type { OutboxItem } from '../sync/types';
 import type { BackupPackage } from './types';
 
-const syncRank: Record<StoredEvent['syncState'], number> = {
-  REJECTED: 0,
-  LOCAL_ONLY: 1,
-  PENDING: 2,
-  CONFIRMED: 3,
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -400,10 +393,9 @@ export async function restoreJsonBackup(
           continue;
         }
 
-        const chosen = syncRank[incoming.syncState] > syncRank[existing.syncState]
-          ? { ...existing, ...incoming }
-          : existing;
-        await db.events.put(chosen);
+        // A backup file may restore missing immutable events, but it must
+        // never override a sync verdict already known by this device.
+        // Server-confirmed/rejected state is not trusted from an imported file.
         result.merged += 1;
       }
 
