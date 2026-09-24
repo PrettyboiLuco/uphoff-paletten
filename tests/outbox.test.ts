@@ -324,4 +324,49 @@ describe('E2.2 outbox and retry', () => {
     expect(await db.outbox.count()).toBe(1);
     await db.close();
   });
+
+  it('rejects a dependent correction instead of retrying forever after the original is rejected', async () => {
+    const db = makeDb('e22-correction-original-rejected');
+    const remote = new FakeRemote();
+
+    await persistAndQueueEvent(
+      db,
+      makeEvent({
+        id: 'bad-original',
+        syncState: 'LOCAL_ONLY',
+      }),
+      1000,
+    );
+    await persistAndQueueEvent(
+      db,
+      makeEvent({
+        id: 'korr_bad-original',
+        art: 'KORREKTUR',
+        delta: -15,
+        korrigiertId: 'bad-original',
+        syncState: 'LOCAL_ONLY',
+      }),
+      1000,
+    );
+
+    await db.events.update('bad-original', {
+      syncState: 'REJECTED',
+      rejectionReason: 'PERMISSION_DENIED',
+    });
+    await db.outbox.delete('bad-original');
+
+    const result = await runSyncPass(db, remote, 1000);
+
+    expect(result.rejected).toBe(1);
+    expect(await db.outbox.get('korr_bad-original')).toBeUndefined();
+    expect(
+      (await db.events.get('korr_bad-original'))?.syncState,
+    ).toBe('REJECTED');
+    expect(
+      (await db.events.get('korr_bad-original'))?.rejectionReason,
+    ).toBe('ORIGINAL_REJECTED');
+    await db.close();
+  });
+
+
 });
