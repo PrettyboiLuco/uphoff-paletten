@@ -269,6 +269,60 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    function validHeartbeat(uid) {
+      return request.resource.data.keys().hasOnly([
+          'uid',
+          'lastSeen',
+          'pendingCount',
+          'rejectedCount',
+          'eventCount',
+          'appVersion',
+          'syncState',
+          'checkCodeJson'
+        ])
+        && request.resource.data.keys().hasAll([
+          'uid',
+          'lastSeen',
+          'pendingCount',
+          'rejectedCount',
+          'eventCount',
+          'appVersion',
+          'syncState',
+          'checkCodeJson'
+        ])
+        && request.resource.data.uid == uid
+        && uid == request.auth.uid
+        && request.resource.data.lastSeen is timestamp
+        && request.resource.data.lastSeen == request.time
+        && request.resource.data.pendingCount is int
+        && request.resource.data.pendingCount >= 0
+        && request.resource.data.rejectedCount is int
+        && request.resource.data.rejectedCount >= 0
+        && request.resource.data.eventCount is int
+        && request.resource.data.eventCount >= 0
+        && request.resource.data.appVersion is string
+        && request.resource.data.appVersion.size() > 0
+        && request.resource.data.appVersion.size() <= 32
+        && request.resource.data.syncState is string
+        && request.resource.data.syncState in [
+          'SYNCHRON',
+          'PENDING',
+          'REJECTED',
+          'NEVER_SYNCED',
+          'STALE'
+        ]
+        && request.resource.data.checkCodeJson is string
+        && request.resource.data.checkCodeJson.size() <= 4096;
+    }
+
+    match /heartbeats/{uid} {
+      allow read: if isActiveDevice()
+        && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isActiveDevice()
+        && validHeartbeat(uid);
+      allow delete: if false;
+    }
+
     match /devices/{uid} {
       allow read: if request.auth != null
         && (request.auth.uid == uid || isAdmin());
