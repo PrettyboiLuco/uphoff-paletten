@@ -33,6 +33,7 @@ import {
 } from '../sync/firebaseRuntime';
 import { validateServerPalletConfig } from '../sync/configValidation';
 import { getSyncHealth } from '../sync/health';
+import { writeDeviceHeartbeat } from '../sync/heartbeat';
 import { runFullSync, startRealtimeSync } from '../sync/reconcile';
 import { runSyncPass } from '../sync/syncEngine';
 import type { RemoteRealtimeEventStore, RemoteUnsubscribe } from '../sync/types';
@@ -72,6 +73,10 @@ const emptyComparison: PeriodComparison = {
   weggekommen: { current: 0, previous: 0, percentChange: 0 },
   inventurdifferenz: { current: 0, previous: 0, percentChange: 0 },
 };
+
+const APP_VERSION =
+  (import.meta.env.VITE_APP_VERSION as string | undefined)?.trim()
+  || '0.1.0';
 
 const PERIODS: readonly { id: StatisticsPeriodKind; label: string }[] = [
   { id: 'TODAY', label: 'HEUTE' },
@@ -313,6 +318,7 @@ export function App() {
     let cancelled = false;
     let retryTimer: number | null = null;
     let reconcileTimer: number | null = null;
+    let heartbeatTimer: number | null = null;
 
     const controller = new LocalBookingController();
     controllerRef.current = controller;
@@ -330,6 +336,31 @@ export function App() {
     const onVisibility = () => {
       if (document.visibilityState === 'visible' && remoteRef.current) {
         void fullSync(controller);
+      }
+    };
+
+    const publishHeartbeat = async (
+      firestore: NonNullable<
+        Awaited<ReturnType<typeof getFirebaseRuntime>>['db']
+      >,
+      uid: string,
+    ) => {
+      if (!navigator.onLine) return;
+
+      try {
+        await writeDeviceHeartbeat(
+          firestore,
+          uid,
+          controller.db,
+          APP_VERSION,
+        );
+      } catch (caught) {
+        await recordSyncError(
+          controller,
+          'HEARTBEAT_FAILED',
+          caught,
+        );
+        await verifyDeviceStillAllowed(controller);
       }
     };
 
@@ -523,6 +554,12 @@ export function App() {
             void fullSync(controller);
           }
         }, 5 * 60_000);
+
+        await publishHeartbeat(runtime.db, runtime.uid);
+
+        heartbeatTimer = window.setInterval(() => {
+          void publishHeartbeat(runtime.db!, runtime.uid!);
+        }, 15 * 60_000);
       } catch (caught) {
         if (cancelled) return;
         setBackendState('ERROR');
@@ -537,6 +574,7 @@ export function App() {
       cancelled = true;
       if (retryTimer !== null) window.clearInterval(retryTimer);
       if (reconcileTimer !== null) window.clearInterval(reconcileTimer);
+      if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
       realtimeStopRef.current?.();
       realtimeStopRef.current = null;
       window.removeEventListener('online', onOnline);
