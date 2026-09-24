@@ -71,6 +71,8 @@ test('outgoing mode is visually and functionally distinct', async ({ page }) => 
   const firstRow = page.locator('.pallet-row').first();
   await firstRow.locator('.stack-button').click();
   await expect(firstRow.locator('.row-stock strong')).toHaveText('-15');
+  await expect(firstRow.locator('.row-stock span')).toHaveText('NEGATIV');
+  await expect(firstRow).toHaveAttribute('data-negative', 'true');
   await expect(firstRow.locator('.stack-button')).toContainText('−15');
 });
 
