@@ -442,7 +442,9 @@ export function App() {
           navigator.onLine ? 'INITIALIZING' : 'OFFLINE',
         );
 
-        await pushPending(controller);
+        if (navigator.onLine) {
+          await fullSync(controller);
+        }
         if (cancelled) return;
 
         realtimeStopRef.current = await startRealtimeSync(
