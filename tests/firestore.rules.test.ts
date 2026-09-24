@@ -509,6 +509,94 @@ describe('E2.3 Firestore security rules', () => {
   });
 
 
+
+  it('rejects zero or mismatched transfer pairs', async () => {
+    const db = env.authenticatedContext('ipad-admin').firestore();
+
+    const zero = writeBatch(db);
+    zero.set(
+      doc(db, 'events/transfer-zero-a'),
+      eventData('ipad-admin', {
+        id: 'transfer-zero-a',
+        art: 'UMBUCHUNG',
+        sorte: 'EURO',
+        delta: 0,
+        umbuchungId: 'u-zero',
+        umbuchungPartnerId: 'transfer-zero-b',
+      }),
+    );
+    zero.set(
+      doc(db, 'events/transfer-zero-b'),
+      eventData('ipad-admin', {
+        id: 'transfer-zero-b',
+        art: 'UMBUCHUNG',
+        sorte: 'EINWEG',
+        delta: 0,
+        umbuchungId: 'u-zero',
+        umbuchungPartnerId: 'transfer-zero-a',
+      }),
+    );
+    await assertFails(zero.commit());
+
+    const versionMismatch = writeBatch(db);
+    versionMismatch.set(
+      doc(db, 'events/transfer-version-a'),
+      eventData('ipad-admin', {
+        id: 'transfer-version-a',
+        art: 'UMBUCHUNG',
+        sorte: 'EURO',
+        delta: -10,
+        konfigVersion: 'v1',
+        umbuchungId: 'u-version',
+        umbuchungPartnerId: 'transfer-version-b',
+      }),
+    );
+    versionMismatch.set(
+      doc(db, 'events/transfer-version-b'),
+      eventData('ipad-admin', {
+        id: 'transfer-version-b',
+        art: 'UMBUCHUNG',
+        sorte: 'EINWEG',
+        delta: 10,
+        konfigVersion: 'v2',
+        umbuchungId: 'u-version',
+        umbuchungPartnerId: 'transfer-version-a',
+      }),
+    );
+    await assertFails(versionMismatch.commit());
+
+    const timeMismatch = writeBatch(db);
+    timeMismatch.set(
+      doc(db, 'events/transfer-time-a'),
+      eventData('ipad-admin', {
+        id: 'transfer-time-a',
+        art: 'UMBUCHUNG',
+        sorte: 'EURO',
+        delta: -10,
+        umbuchungId: 'u-time',
+        umbuchungPartnerId: 'transfer-time-b',
+        buchungszeit: Timestamp.fromDate(
+          new Date('2026-09-23T10:00:00Z'),
+        ),
+      }),
+    );
+    timeMismatch.set(
+      doc(db, 'events/transfer-time-b'),
+      eventData('ipad-admin', {
+        id: 'transfer-time-b',
+        art: 'UMBUCHUNG',
+        sorte: 'EINWEG',
+        delta: 10,
+        umbuchungId: 'u-time',
+        umbuchungPartnerId: 'transfer-time-a',
+        buchungszeit: Timestamp.fromDate(
+          new Date('2026-09-23T10:00:01Z'),
+        ),
+      }),
+    );
+    await assertFails(timeMismatch.commit());
+  });
+
   it('rejects future device time beyond the allowed tolerance but permits old offline booking time', async () => {
     const db = env.authenticatedContext('iphone-user').firestore();
 
