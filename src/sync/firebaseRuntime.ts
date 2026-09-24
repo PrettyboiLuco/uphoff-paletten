@@ -32,6 +32,7 @@ export interface FirebaseRuntime {
   db?: Firestore;
   remote?: FirestoreRemoteEventStore;
   appCheckEnabled: boolean;
+  role?: 'ADMIN' | 'USER';
   reason?: string;
 }
 
@@ -148,6 +149,26 @@ async function initializeRuntime(): Promise<FirebaseRuntime> {
         reason: 'device-disabled',
       };
     }
+
+    const role = device.data().role;
+    if (role !== 'ADMIN' && role !== 'USER') {
+      return {
+        status: 'DISABLED',
+        uid,
+        db,
+        appCheckEnabled: Boolean(appCheckKey),
+        reason: 'device-role-invalid',
+      };
+    }
+
+    return {
+      status: 'ACTIVE',
+      uid,
+      db,
+      remote: new FirestoreRemoteEventStore(db),
+      appCheckEnabled: Boolean(appCheckKey),
+      role,
+    };
   } catch {
     return {
       status: 'AWAITING_APPROVAL',
@@ -158,13 +179,6 @@ async function initializeRuntime(): Promise<FirebaseRuntime> {
     };
   }
 
-  return {
-    status: 'ACTIVE',
-    uid,
-    db,
-    remote: new FirestoreRemoteEventStore(db),
-    appCheckEnabled: Boolean(appCheckKey),
-  };
 }
 
 export function getFirebaseRuntime(): Promise<FirebaseRuntime> {
