@@ -5,9 +5,7 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  push:
-    branches:
-      - build/pwa-v1
+  workflow_dispatch:
   pull_request:
 
 jobs:

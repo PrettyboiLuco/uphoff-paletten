@@ -9,11 +9,12 @@ on:
     branches:
       - build/pwa-v1
   pull_request:
+  workflow_dispatch:
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +28,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test:release-unit
+      - run: npm run test:e23
       - run: npm run test:e7-adapter
       - run: npx playwright install --with-deps webkit
+      - run: npm run test:e4-browser
+      - run: npm run test:e5-browser
+      - run: npm run test:e6-browser
       - run: npm run test:e7-pwa
