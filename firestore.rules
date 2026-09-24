@@ -167,10 +167,15 @@ service cloud.firestore {
         && request.resource.data.delta == -original.delta;
     }
 
-    function validAdminAdjustment() {
+    function validAdminAdjustment(eventId) {
       return isAdmin()
+        && request.resource.data.delta != 0
         && (
-          request.resource.data.art == 'ANFANGSBESTAND'
+          (
+            request.resource.data.art == 'ANFANGSBESTAND'
+            && request.resource.data.delta > 0
+            && eventId == 'anfang_' + request.resource.data.sorte
+          )
           || request.resource.data.art == 'INVENTUR'
         );
     }
@@ -206,7 +211,7 @@ service cloud.firestore {
           validZugang()
           || validAbgang()
           || validCorrection(eventId)
-          || validAdminAdjustment()
+          || validAdminAdjustment(eventId)
           || validTransfer(eventId)
         );
       allow update, delete: if false;
