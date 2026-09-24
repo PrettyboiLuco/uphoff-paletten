@@ -5,7 +5,7 @@ import {
   persistAndQueueEvent,
   persistAndQueueEvents,
 } from '../persistence/outbox';
-import type { PalletTypeConfig } from './config';
+import { PALLET_CONFIG_VERSION, type PalletTypeConfig } from './config';
 import { effectForTap, type CountMode } from './logic';
 
 export type BookingAction = 'STACK' | 'PLUS_ONE' | 'MINUS_ONE';
@@ -104,7 +104,7 @@ export class LocalBookingController {
         art: mode === 'EINGANG' ? 'ZUGANG' : 'ABGANG',
         delta: effectForTap(mode, action, pallet.stackSize),
         buchungszeit: tappedAt.toISOString(),
-        konfigVersion: 'v1',
+        konfigVersion: PALLET_CONFIG_VERSION,
         vorgangId: processId,
         syncState: 'LOCAL_ONLY',
         createdLocalAt: tappedAt.toISOString(),
