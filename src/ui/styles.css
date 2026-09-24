@@ -839,3 +839,27 @@ button:disabled { opacity: .48; cursor: default; }
 .last-action.warning strong {
   color: #f4d89a;
 }
+
+.pallet-row.negative {
+  border-color: rgba(255,101,101,.38);
+  background: rgba(255,101,101,.07);
+}
+
+.pallet-row.negative .type-accent,
+.pallet-row.negative .row-stock strong {
+  background: var(--outgoing);
+  color: var(--outgoing);
+}
+
+.pallet-row.negative .type-accent {
+  box-shadow: 0 0 10px rgba(255,101,101,.35);
+}
+
+.pallet-row.negative .row-stock strong {
+  background: transparent;
+}
+
+.pallet-row.negative .row-stock span,
+.hero-total.negative strong {
+  color: var(--outgoing);
+}
