@@ -47,24 +47,11 @@ function toFirestoreEvent(event: PalletEvent): Record<string, unknown> {
 }
 
 function timestampToIso(value: unknown): string | undefined {
-  if (!(value instanceof Timestamp)) return undefined;
-  const wholeSecond = new Date(value.seconds * 1000)
-    .toISOString()
-    .slice(0, 19);
-  const fraction = String(value.nanoseconds).padStart(9, '0');
-  return `${wholeSecond}.${fraction}Z`;
+  return value instanceof Timestamp ? value.toDate().toISOString() : undefined;
 }
 
 function timestampFromExactIso(iso: string): Timestamp {
-  const match = iso.match(
-    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/,
-  );
-
-  if (!match) return Timestamp.fromDate(new Date(iso));
-
-  const seconds = Math.floor(Date.parse(`${match[1]}Z`) / 1000);
-  const nanoseconds = Number((match[2] ?? '').padEnd(9, '0'));
-  return new Timestamp(seconds, nanoseconds);
+  return Timestamp.fromDate(new Date(iso));
 }
 
 function fromFirestoreEvent(data: Record<string, unknown>): PalletEvent {
