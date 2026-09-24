@@ -314,6 +314,106 @@ describe('E2.3 Firestore security rules', () => {
     );
   });
 
+  it('prevents a normal device from correcting another device or admin-only adjustments', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'events/foreign-normal'), {
+        ...eventData('ipad-admin', {
+          id: 'foreign-normal',
+          geraetId: 'ipad-admin',
+          art: 'ZUGANG',
+          delta: 15,
+        }),
+        serverzeit: Timestamp.now(),
+      });
+      await setDoc(doc(db, 'events/admin-inventory'), {
+        ...eventData('ipad-admin', {
+          id: 'admin-inventory',
+          geraetId: 'ipad-admin',
+          art: 'INVENTUR',
+          delta: -3,
+        }),
+        serverzeit: Timestamp.now(),
+      });
+      await setDoc(doc(db, 'events/admin-transfer'), {
+        ...eventData('ipad-admin', {
+          id: 'admin-transfer',
+          geraetId: 'ipad-admin',
+          art: 'UMBUCHUNG',
+          delta: -10,
+          umbuchungId: 'seed-transfer',
+          umbuchungPartnerId: 'seed-transfer-partner',
+        }),
+        serverzeit: Timestamp.now(),
+      });
+    });
+
+    const userDb = env.authenticatedContext('iphone-user').firestore();
+
+    await assertFails(
+      setDoc(
+        doc(userDb, 'events/korr_foreign-normal'),
+        eventData('iphone-user', {
+          id: 'korr_foreign-normal',
+          art: 'KORREKTUR',
+          delta: -15,
+          korrigiertId: 'foreign-normal',
+        }),
+      ),
+    );
+
+    await assertFails(
+      setDoc(
+        doc(userDb, 'events/korr_admin-inventory'),
+        eventData('iphone-user', {
+          id: 'korr_admin-inventory',
+          art: 'KORREKTUR',
+          delta: 3,
+          korrigiertId: 'admin-inventory',
+        }),
+      ),
+    );
+
+    const adminDb = env.authenticatedContext('ipad-admin').firestore();
+
+    await assertSucceeds(
+      setDoc(
+        doc(adminDb, 'events/korr_foreign-normal'),
+        eventData('ipad-admin', {
+          id: 'korr_foreign-normal',
+          art: 'KORREKTUR',
+          delta: -15,
+          korrigiertId: 'foreign-normal',
+        }),
+      ),
+    );
+
+    await assertSucceeds(
+      setDoc(
+        doc(adminDb, 'events/korr_admin-inventory'),
+        eventData('ipad-admin', {
+          id: 'korr_admin-inventory',
+          art: 'KORREKTUR',
+          delta: 3,
+          korrigiertId: 'admin-inventory',
+        }),
+      ),
+    );
+
+    await assertFails(
+      setDoc(
+        doc(adminDb, 'events/korr_admin-transfer'),
+        eventData('ipad-admin', {
+          id: 'korr_admin-transfer',
+          art: 'KORREKTUR',
+          delta: 10,
+          korrigiertId: 'admin-transfer',
+        }),
+      ),
+    );
+  });
+
+
   it('requires UMBUCHUNG to be an admin atomic pair with sum zero', async () => {
     const db = env.authenticatedContext('ipad-admin').firestore();
 
@@ -357,6 +457,57 @@ describe('E2.3 Firestore security rules', () => {
       ),
     );
   });
+
+  it('allows only immutable, complete seven-sort config versions', async () => {
+    const adminDb = env.authenticatedContext('ipad-admin').firestore();
+
+    const validConfig = {
+      stapel: {
+        'typ-1': 15,
+        'typ-2': 15,
+        'typ-3': 15,
+        'typ-4': 15,
+        'typ-5': 17,
+        'typ-6': 17,
+        'typ-7': 17,
+      },
+    };
+
+    await assertSucceeds(
+      setDoc(doc(adminDb, 'configs/v3'), validConfig),
+    );
+
+    await assertFails(
+      updateDoc(doc(adminDb, 'configs/v3'), {
+        'stapel.typ-1': 17,
+      }),
+    );
+
+    await assertFails(deleteDoc(doc(adminDb, 'configs/v3')));
+
+    await assertFails(
+      setDoc(doc(adminDb, 'configs/incomplete'), {
+        stapel: {
+          'typ-1': 15,
+        },
+      }),
+    );
+
+    await assertFails(
+      setDoc(doc(adminDb, 'configs/invalid-stack'), {
+        stapel: {
+          ...validConfig.stapel,
+          'typ-7': 99,
+        },
+      }),
+    );
+
+    const userDb = env.authenticatedContext('iphone-user').firestore();
+    await assertFails(
+      setDoc(doc(userDb, 'configs/user-created'), validConfig),
+    );
+  });
+
 
   it('rejects future device time beyond the allowed tolerance but permits old offline booking time', async () => {
     const db = env.authenticatedContext('iphone-user').firestore();
