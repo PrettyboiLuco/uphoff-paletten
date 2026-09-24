@@ -1087,3 +1087,120 @@ button:disabled { opacity: .48; cursor: default; }
     font-size: 9px;
   }
 }
+
+
+.admin-stock-panel {
+  border: 1px solid rgba(240,184,76,.28);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  background: rgba(240,184,76,.045);
+}
+
+.admin-stock-title {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-stock-title strong {
+  color: var(--warning);
+  font-size: 9px;
+  letter-spacing: .1em;
+}
+
+.admin-stock-title span {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.admin-stock-controls {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 74px minmax(100px, 1fr);
+  gap: 6px;
+}
+
+.admin-stock-controls select,
+.admin-stock-controls input {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #101318;
+  color: var(--text);
+  padding: 0 9px;
+  font: inherit;
+  font-size: 10px;
+}
+
+.admin-current {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+}
+
+.admin-current span {
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.admin-current strong {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-stock-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.admin-stock-actions button,
+.admin-confirm button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255,255,255,.04);
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .06em;
+}
+
+.admin-stock-actions .primary,
+.admin-confirm .primary {
+  border-color: rgba(240,184,76,.35);
+  background: rgba(240,184,76,.1);
+  color: var(--warning);
+}
+
+.admin-confirm {
+  border-top: 1px solid rgba(240,184,76,.2);
+  padding-top: 8px;
+  display: grid;
+  gap: 7px;
+}
+
+.admin-confirm > span {
+  color: #ead8ae;
+  font-size: 9px;
+}
+
+.admin-confirm > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+@media (max-width: 520px) {
+  .admin-stock-controls {
+    grid-template-columns: 1fr 70px;
+  }
+
+  .admin-stock-controls input {
+    grid-column: 1 / -1;
+  }
+}
