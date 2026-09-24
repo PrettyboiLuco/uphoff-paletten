@@ -320,6 +320,38 @@ describe('E6 backup, self-test and operations', () => {
   });
 
 
+
+  it('never lets an imported backup resurrect an event already rejected locally', async () => {
+    const source = db('e6-rejected-source');
+    await source.events.add(
+      event('verdict-event', 15, {
+        syncState: 'CONFIRMED',
+      }),
+    );
+    const json = await createJsonBackup(
+      source,
+      '2026-09-23T12:00:00Z',
+    );
+
+    const target = db('e6-rejected-target');
+    await target.events.add(
+      event('verdict-event', 15, {
+        syncState: 'REJECTED',
+        rejectionReason: 'PERMISSION_DENIED',
+      }),
+    );
+
+    const restored = await restoreJsonBackup(target, json);
+    const after = await target.events.get('verdict-event');
+
+    expect(restored.merged).toBe(1);
+    expect(after?.syncState).toBe('REJECTED');
+    expect(after?.rejectionReason).toBe('PERMISSION_DENIED');
+
+    await source.close();
+    await target.close();
+  });
+
   it('creates semicolon CSV with escaped user-visible values', async () => {
     const database = db('e6-csv');
     await database.events.add(
