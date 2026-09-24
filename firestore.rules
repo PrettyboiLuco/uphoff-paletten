@@ -266,7 +266,8 @@ service cloud.firestore {
     }
 
     match /devices/{uid} {
-      allow read: if isActiveDevice() && (request.auth.uid == uid || isAdmin());
+      allow read: if request.auth != null
+        && (request.auth.uid == uid || isAdmin());
       allow create, update: if isAdmin();
       allow delete: if false;
     }
