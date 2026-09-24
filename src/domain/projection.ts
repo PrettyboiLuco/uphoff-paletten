@@ -67,6 +67,13 @@ function validCorrection(
   const original = byId.get(correction.korrigiertId);
   if (!original) return { valid: false, reason: 'orphan-correction' };
   if (original.art === 'KORREKTUR') return { valid: false, original, reason: 'correction-of-correction' };
+  if (original.art === 'UMBUCHUNG') return { valid: false, original, reason: 'correction-of-transfer' };
+  if (correction.id !== correctionId(original.id)) {
+    return { valid: false, original, reason: 'non-deterministic-correction-id' };
+  }
+  if (correction.konfigVersion !== original.konfigVersion) {
+    return { valid: false, original, reason: 'wrong-correction-config' };
+  }
   if (correction.delta !== -original.delta) {
     return { valid: false, original, reason: 'wrong-correction-delta' };
   }
