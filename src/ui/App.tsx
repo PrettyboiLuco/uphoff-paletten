@@ -221,12 +221,13 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     let retryTimer: number | null = null;
+    let reconcileTimer: number | null = null;
 
     const controller = new LocalBookingController();
     controllerRef.current = controller;
 
     const onOnline = () => {
-      setBackendState('ACTIVE');
+      setBackendState('INITIALIZING');
       void fullSync(controller);
     };
 
@@ -323,7 +324,9 @@ export function App() {
 
         remoteRef.current = runtime.remote;
         setBookingReady(true);
-        setBackendState(navigator.onLine ? 'ACTIVE' : 'OFFLINE');
+        setBackendState(
+          navigator.onLine ? 'INITIALIZING' : 'OFFLINE',
+        );
 
         await fullSync(controller);
         if (cancelled) return;
@@ -354,6 +357,12 @@ export function App() {
             void pushPending(controller);
           }
         }, 15_000);
+
+        reconcileTimer = window.setInterval(() => {
+          if (navigator.onLine && remoteRef.current) {
+            void fullSync(controller);
+          }
+        }, 5 * 60_000);
       } catch (caught) {
         if (cancelled) return;
         setBackendState('ERROR');
@@ -367,6 +376,7 @@ export function App() {
     return () => {
       cancelled = true;
       if (retryTimer !== null) window.clearInterval(retryTimer);
+      if (reconcileTimer !== null) window.clearInterval(reconcileTimer);
       realtimeStopRef.current?.();
       realtimeStopRef.current = null;
       window.removeEventListener('online', onOnline);
