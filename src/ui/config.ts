@@ -6,6 +6,10 @@ export interface PalletTypeConfig {
 
 export const PALLET_CONFIG_VERSION = 'v1';
 
+// Deliberate production release lock. Set to true only after Luc has supplied
+// and approved all seven real names and fixed stack sizes.
+export const PALLET_CONFIG_APPROVED = false;
+
 export const PALLET_TYPES: readonly PalletTypeConfig[] = [
   { id: 'typ-1', name: 'Sorte 1', stackSize: 15 },
   { id: 'typ-2', name: 'Sorte 2', stackSize: 15 },
@@ -17,7 +21,8 @@ export const PALLET_TYPES: readonly PalletTypeConfig[] = [
 ] as const;
 
 export const PALLET_CONFIG_READY = (
-  PALLET_TYPES.length === 7
+  PALLET_CONFIG_APPROVED
+  && PALLET_TYPES.length === 7
   && PALLET_TYPES.every(
     (type) =>
       type.name.trim().length > 0
