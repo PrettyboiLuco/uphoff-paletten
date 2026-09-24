@@ -180,18 +180,22 @@ service cloud.firestore {
     }
 
     function validTransfer(eventId) {
+      let partner = getAfter(transferPartnerPath()).data;
+
       return isAdmin()
         && request.resource.data.art == 'UMBUCHUNG'
         && request.resource.data.keys().hasAll(['umbuchungId', 'umbuchungPartnerId'])
         && request.resource.data.umbuchungPartnerId != eventId
+        && request.resource.data.delta != 0
         && existsAfter(transferPartnerPath())
-        && getAfter(transferPartnerPath()).data.art == 'UMBUCHUNG'
-        && getAfter(transferPartnerPath()).data.umbuchungId
-          == request.resource.data.umbuchungId
-        && getAfter(transferPartnerPath()).data.umbuchungPartnerId == eventId
-        && getAfter(transferPartnerPath()).data.geraetId == request.auth.uid
-        && getAfter(transferPartnerPath()).data.sorte != request.resource.data.sorte
-        && getAfter(transferPartnerPath()).data.delta + request.resource.data.delta == 0;
+        && partner.art == 'UMBUCHUNG'
+        && partner.umbuchungId == request.resource.data.umbuchungId
+        && partner.umbuchungPartnerId == eventId
+        && partner.geraetId == request.auth.uid
+        && partner.sorte != request.resource.data.sorte
+        && partner.konfigVersion == request.resource.data.konfigVersion
+        && partner.buchungszeit == request.resource.data.buchungszeit
+        && partner.delta + request.resource.data.delta == 0;
     }
 
     match /events/{eventId} {
