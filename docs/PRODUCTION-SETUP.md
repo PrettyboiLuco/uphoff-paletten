@@ -50,7 +50,7 @@ Beispiel:
 }
 ```
 
-Die echten sieben Sortennamen und Stapelgrößen müssen vor Rollout in `src/ui/config.ts` und in der serverseitigen Konfiguration übereinstimmen.
+Die echten sieben Sortennamen und Stapelgrößen müssen vor Rollout in `src/ui/config.ts` und in der serverseitigen Konfiguration übereinstimmen. Solange Namen wie `Sorte 1` bis `Sorte 7` noch Platzhalter sind, sperrt der Produktionsbuild neue Buchungen bewusst.
 
 ## 5. Lokale Persistenz
 Die App verwendet zwei Ebenen:
