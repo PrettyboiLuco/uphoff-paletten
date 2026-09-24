@@ -11,7 +11,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, setDoc, type Firestore } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, type Firestore } from 'firebase/firestore';
 import type { PalletEvent } from '../src/domain/types';
 import { FirestoreRemoteEventStore } from '../src/sync/firestoreRemoteStore';
 import { RemoteCreateError } from '../src/sync/types';
@@ -103,6 +103,63 @@ describe('release integration: Firestore adapter + real rules', () => {
 
     const all = await remote.listEvents();
     expect(all).toHaveLength(1);
+  });
+
+
+  it('refuses malformed remote documents instead of projecting corrupt data', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'events/malformed'), {
+        id: 'malformed',
+        geraetId: 'phone-a',
+        sorte: 'typ-1',
+        art: 'ZUGANG',
+        delta: '15',
+        buchungszeit: Timestamp.fromDate(
+          new Date('2026-09-23T10:00:00Z'),
+        ),
+        serverzeit: Timestamp.fromDate(
+          new Date('2026-09-23T10:00:01Z'),
+        ),
+        konfigVersion: 'v1',
+      });
+    });
+
+    const db = env.authenticatedContext('phone-a').firestore();
+    const remote = new FirestoreRemoteEventStore(
+      db as unknown as Firestore,
+    );
+
+    await expect(remote.listEvents()).rejects.toThrow(
+      'invalid-remote-delta',
+    );
+  });
+
+  it('refuses a remote document whose payload id differs from its document id', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'events/path-id'), {
+        id: 'payload-id',
+        geraetId: 'phone-a',
+        sorte: 'typ-1',
+        art: 'ZUGANG',
+        delta: 15,
+        buchungszeit: Timestamp.fromDate(
+          new Date('2026-09-23T10:00:00Z'),
+        ),
+        serverzeit: Timestamp.fromDate(
+          new Date('2026-09-23T10:00:01Z'),
+        ),
+        konfigVersion: 'v1',
+      });
+    });
+
+    const db = env.authenticatedContext('phone-a').firestore();
+    const remote = new FirestoreRemoteEventStore(
+      db as unknown as Firestore,
+    );
+
+    await expect(remote.listEvents()).rejects.toThrow(
+      'remote-id-document-mismatch',
+    );
   });
 
   it('maps a mismatched device identity to a permanent permission error', async () => {
