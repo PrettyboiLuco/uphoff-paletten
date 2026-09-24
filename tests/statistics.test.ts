@@ -116,6 +116,44 @@ describe('E3 statistics and calendar correctness', () => {
     expect(statisticsForRange([original, correction], september).weggekommen).toBe(0);
   });
 
+  it('ignores corrections that violate deterministic id or config invariants', () => {
+    const original = event(
+      'strict-stats-original',
+      'ZUGANG',
+      15,
+      '2026-09-23T10:00:00+02:00',
+    );
+    const wrongId = event(
+      'manual-stats-correction',
+      'KORREKTUR',
+      -15,
+      '2026-09-23T11:00:00+02:00',
+      { korrigiertId: original.id },
+    );
+    const wrongConfig = event(
+      'korr_strict-stats-original',
+      'KORREKTUR',
+      -15,
+      '2026-09-23T11:00:00+02:00',
+      {
+        korrigiertId: original.id,
+        konfigVersion: 'v2',
+      },
+    );
+    const range = periodWindow(
+      'TODAY',
+      '2026-09-23T12:00:00+02:00',
+    ).current;
+
+    expect(
+      statisticsForRange([original, wrongId], range).dazugekommen,
+    ).toBe(15);
+    expect(
+      statisticsForRange([original, wrongConfig], range).dazugekommen,
+    ).toBe(15);
+  });
+
+
   it('keeps Anfangsbestand and Umbuchung out of access/egress metrics', () => {
     const events = [
       event('start', 'ANFANGSBESTAND', 100, '2026-09-01T08:00:00+02:00'),
