@@ -35,7 +35,7 @@ import { runFullSync, startRealtimeSync } from '../sync/reconcile';
 import { runSyncPass } from '../sync/syncEngine';
 import type { RemoteRealtimeEventStore, RemoteUnsubscribe } from '../sync/types';
 import { LocalBookingController, type BookingAction } from './bookingController';
-import { PALLET_TYPES } from './config';
+import { PALLET_CONFIG_READY, PALLET_TYPES } from './config';
 import { syncLabel, type CountMode } from './logic';
 
 type Tab = 'COUNT' | 'STATS';
@@ -416,7 +416,13 @@ export function App() {
         }
 
         remoteRef.current = runtime.remote;
-        setBookingReady(true);
+        const palletConfigUsable = PALLET_CONFIG_READY || allowLocalOnly;
+        setBookingReady(palletConfigUsable);
+        if (!palletConfigUsable) {
+          setError(
+            'Die sieben echten Palettensorten und Stapelgrößen sind noch nicht final konfiguriert. Synchronisierung bleibt aktiv, neue Buchungen sind gesperrt.',
+          );
+        }
         setBackendState(
           navigator.onLine ? 'INITIALIZING' : 'OFFLINE',
         );
