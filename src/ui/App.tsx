@@ -119,6 +119,9 @@ export function App() {
   const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
   const [layoutReady, setLayoutReady] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
+  const allowLocalOnly =
+    import.meta.env.DEV
+    || import.meta.env.VITE_ALLOW_LOCAL_ONLY === 'true';
 
   const refreshStatistics = async (
     controller: LocalBookingController,
@@ -267,7 +270,12 @@ export function App() {
 
         if (runtime.status === 'NOT_CONFIGURED') {
           setBackendState('NOT_CONFIGURED');
-          setBookingReady(true);
+          setBookingReady(allowLocalOnly);
+          if (!allowLocalOnly) {
+            setError(
+              'Die Produktions-Cloud ist nicht konfiguriert. Neue Buchungen bleiben gesperrt, damit dieses Gerät nicht zur einzigen Datenkopie wird.',
+            );
+          }
           return;
         }
 
@@ -588,7 +596,6 @@ export function App() {
       )}
 
       {!bookingReady
-        && backendState !== 'NOT_CONFIGURED'
         && backendState !== 'DISABLED'
         && (
         <div className="cloud-banner" role="status">
