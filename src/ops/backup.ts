@@ -335,6 +335,7 @@ export interface RestoreResult {
 export async function restoreJsonBackup(
   db: UphoffLocalDb,
   json: string,
+  activeDeviceId?: string,
 ): Promise<RestoreResult> {
   let parsed: unknown;
   try {
@@ -344,6 +345,24 @@ export async function restoreJsonBackup(
   }
 
   const backup = validateBackup(parsed);
+
+  if (activeDeviceId) {
+    const pendingIds = new Set(
+      backup.outbox.map((item) => item.eventId),
+    );
+    const foreignPending = backup.events.find(
+      (event) =>
+        pendingIds.has(event.id)
+        && event.geraetId !== activeDeviceId,
+    );
+
+    if (foreignPending) {
+      throw new Error(
+        `foreign-pending-event-in-backup:${foreignPending.id}`,
+      );
+    }
+  }
+
   const result: RestoreResult = {
     inserted: 0,
     merged: 0,
