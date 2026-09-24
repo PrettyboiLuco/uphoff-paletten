@@ -15,6 +15,28 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import type { PalletEvent } from '../domain/types';
+const REMOTE_TIMEOUT_MS = 12_000;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = REMOTE_TIMEOUT_MS,
+): Promise<T> {
+  let timer: number | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = globalThis.setTimeout(() => {
+          reject(new RemoteCreateError('TRANSIENT', 'remote-timeout'));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) globalThis.clearTimeout(timer);
+  }
+}
+
 import {
   RemoteCreateError,
   type RemoteCreateResult,
@@ -113,12 +135,14 @@ export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {
     const ref = doc(this.db, 'events', event.id);
 
     try {
-      await setDoc(ref, toFirestoreEvent(event));
+      await withTimeout(setDoc(ref, toFirestoreEvent(event)));
       return { status: 'CREATED' };
     } catch (error) {
+      if (error instanceof RemoteCreateError) throw error;
+
       if (error instanceof FirebaseError && error.code === 'permission-denied') {
         try {
-          const existing = await getDoc(ref);
+          const existing = await withTimeout(getDoc(ref));
           if (existing.exists()) {
             throw new RemoteCreateError('ALREADY_EXISTS', 'event-already-exists');
           }
@@ -133,31 +157,31 @@ export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {
   }
 
   async getEvent(id: string): Promise<PalletEvent | undefined> {
-    const snapshot = await getDoc(doc(this.db, 'events', id));
+    const snapshot = await withTimeout(getDoc(doc(this.db, 'events', id)));
     if (!snapshot.exists()) return undefined;
     return fromFirestoreEvent(snapshot.data());
   }
 
   async listEvents(): Promise<PalletEvent[]> {
-    const snapshot = await getDocs(
+    const snapshot = await withTimeout(getDocs(
       query(
         collection(this.db, 'events'),
         orderBy('serverzeit', 'asc'),
         orderBy(documentId(), 'asc'),
       ),
-    );
+    ));
     return snapshot.docs.map((item) => fromFirestoreEvent(item.data()));
   }
 
   async listEventsAfter(cursor: RemoteCursor): Promise<PalletEvent[]> {
-    const snapshot = await getDocs(
+    const snapshot = await withTimeout(getDocs(
       query(
         collection(this.db, 'events'),
         orderBy('serverzeit', 'asc'),
         orderBy(documentId(), 'asc'),
         startAt(timestampFromExactIso(cursor.serverzeit)),
       ),
-    );
+    ));
     return snapshot.docs.map((item) => fromFirestoreEvent(item.data()));
   }
 
