@@ -103,7 +103,7 @@ export async function getSyncHealth(
   const lastSyncMs = Date.parse(meta.value);
   if (
     !Number.isFinite(lastSyncMs)
-    || nowMs - lastSyncMs > staleAfterMs
+    || Math.abs(nowMs - lastSyncMs) > staleAfterMs
   ) {
     return {
       state: 'STALE',
