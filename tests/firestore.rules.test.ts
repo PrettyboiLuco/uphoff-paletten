@@ -533,6 +533,23 @@ describe('E2.3 Firestore security rules', () => {
     );
   });
 
+  it('lets an authenticated device read only its own enrollment record even when disabled', async () => {
+    const blocked = env.authenticatedContext('blocked-user').firestore();
+
+    await assertSucceeds(
+      getDoc(doc(blocked, 'devices/blocked-user')),
+    );
+
+    await assertFails(
+      getDoc(doc(blocked, 'devices/iphone-user')),
+    );
+
+    await assertFails(
+      getDoc(doc(blocked, 'events/readable')),
+    );
+  });
+
+
   it('allows active devices to read events but not blocked devices', async () => {
     await env.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), 'events/readable'), {
