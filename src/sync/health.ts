@@ -30,14 +30,19 @@ export interface SyncHealth {
     | 'SYNCHRON'
     | 'PENDING'
     | 'REJECTED'
-    | 'NEVER_SYNCED';
+    | 'NEVER_SYNCED'
+    | 'STALE';
   pendingCount: number;
   rejectedCount: number;
   lastSuccessfulSyncAt?: string;
   lastRetryError?: string;
 }
 
-export async function getSyncHealth(db: UphoffLocalDb): Promise<SyncHealth> {
+export async function getSyncHealth(
+  db: UphoffLocalDb,
+  nowMs = Date.now(),
+  staleAfterMs = 10 * 60 * 1000,
+): Promise<SyncHealth> {
   const [pendingCount, rejectedCount, meta, outbox] = await Promise.all([
     db.events
       .filter(
@@ -89,6 +94,19 @@ export async function getSyncHealth(db: UphoffLocalDb): Promise<SyncHealth> {
   if (!meta) {
     return {
       state: 'NEVER_SYNCED',
+      pendingCount,
+      rejectedCount,
+      ...extras,
+    };
+  }
+
+  const lastSyncMs = Date.parse(meta.value);
+  if (
+    !Number.isFinite(lastSyncMs)
+    || nowMs - lastSyncMs > staleAfterMs
+  ) {
+    return {
+      state: 'STALE',
       pendingCount,
       rejectedCount,
       ...extras,
