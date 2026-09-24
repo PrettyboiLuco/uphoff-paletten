@@ -296,14 +296,14 @@ button:disabled { opacity: .48; cursor: default; }
 @media (max-height: 680px) and (orientation: portrait) {
   .app-shell {
     padding-top: calc(4px + var(--safe-top));
-    padding-bottom: calc(54px + var(--safe-bottom));
+    padding-bottom: calc(64px + var(--safe-bottom));
   }
 
-  .topbar { height: 30px; }
-  .brand-mark { width: 26px; height: 26px; border-radius: 7px; }
-  .brand strong { font-size: 12px; }
+  .topbar { height: 26px; }
+  .brand-mark { width: 24px; height: 24px; border-radius: 7px; }
+  .brand strong { font-size: 11px; }
   .brand span:last-child { display: none; }
-  .sync-pill { min-height: 26px; padding: 0 8px; font-size: 9px; }
+  .sync-pill { min-height: 24px; padding: 0 7px; font-size: 8px; }
 
   .count-page {
     position: relative;
@@ -311,23 +311,26 @@ button:disabled { opacity: .48; cursor: default; }
   }
 
   .hero-total {
-    min-height: 28px;
+    min-height: 20px;
     justify-content: flex-start;
     border-bottom: 0;
     padding: 0;
   }
   .hero-total span { display: none; }
   .hero-total strong {
-    font-size: 30px;
+    font-size: 24px;
     line-height: 1;
   }
 
   .mode-switch {
-    height: 40px;
+    height: 60px;
     padding: 2px;
     border-radius: 10px;
   }
-  .mode-switch button { font-size: 10px; }
+  .mode-switch button {
+    min-height: 56px;
+    font-size: 10px;
+  }
 
   .pallet-list { gap: 0; }
   .pallet-row {
@@ -339,34 +342,31 @@ button:disabled { opacity: .48; cursor: default; }
   }
 
   .last-action {
-    position: absolute;
-    z-index: 3;
-    right: 0;
-    top: 0;
-    width: min(55%, 190px);
-    min-height: 28px;
-    height: 28px;
+    position: static;
+    width: 100%;
+    min-height: 60px;
+    height: 60px;
     padding: 0 2px 0 8px;
     border-radius: 8px;
   }
   .last-action span { display: none; }
   .last-action strong {
-    max-width: 92px;
+    max-width: 150px;
     font-size: 9px;
   }
   .last-action button {
-    min-height: 24px;
-    height: 24px;
-    padding: 0 5px;
-    font-size: 7px;
+    min-height: 56px;
+    height: 56px;
+    padding: 0 8px;
+    font-size: 8px;
   }
 
   .bottom-nav {
-    height: 48px;
-    bottom: calc(3px + var(--safe-bottom));
-    padding: 3px;
+    height: 60px;
+    bottom: calc(2px + var(--safe-bottom));
+    padding: 2px;
   }
-  .bottom-nav button { min-height: 40px; }
+  .bottom-nav button { min-height: 56px; }
 
   .stats-page { gap: 3px; padding-top: 2px; }
   .period-switch { padding: 2px; gap: 2px; }
