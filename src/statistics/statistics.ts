@@ -210,8 +210,21 @@ export function effectiveActivities(
 
     if (!event.korrigiertId) continue;
     const original = byId.get(event.korrigiertId);
-    if (!original || original.art === 'KORREKTUR') continue;
-    if (event.delta !== -original.delta || event.sorte !== original.sorte) continue;
+    if (
+      !original
+      || original.art === 'KORREKTUR'
+      || original.art === 'UMBUCHUNG'
+    ) {
+      continue;
+    }
+    if (
+      event.id !== `korr_${original.id}`
+      || event.konfigVersion !== original.konfigVersion
+      || event.delta !== -original.delta
+      || event.sorte !== original.sorte
+    ) {
+      continue;
+    }
 
     result.push({
       eventId: event.id,
