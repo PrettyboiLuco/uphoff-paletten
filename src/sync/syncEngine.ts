@@ -79,6 +79,12 @@ export async function runSyncPass(
         continue;
       }
 
+      if (original.syncState === 'REJECTED') {
+        await markRejected(db, local.id, 'ORIGINAL_REJECTED');
+        result.rejected += 1;
+        continue;
+      }
+
       if (original.syncState !== 'CONFIRMED') {
         await scheduleRetry(
           db,
