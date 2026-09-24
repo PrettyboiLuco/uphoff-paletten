@@ -117,6 +117,53 @@ describe('E1 domain correctness', () => {
     expect(p.anomalies).toEqual(['korr_missing:orphan-correction']);
   });
 
+  it('quarantines corrections that violate deterministic id, config, or transfer rules', () => {
+    const original = event('ZUGANG', 15, {
+      id: 'strict-original',
+      konfigVersion: 'v1',
+    });
+    const wrongId = event('KORREKTUR', -15, {
+      id: 'manual-correction-id',
+      korrigiertId: original.id,
+      konfigVersion: 'v1',
+    });
+    const wrongConfig = event('KORREKTUR', -15, {
+      id: correctionId(original.id),
+      korrigiertId: original.id,
+      konfigVersion: 'v2',
+    });
+    const transfer = event('UMBUCHUNG', -10, {
+      id: 'transfer-original',
+      sorte: 'EURO',
+      umbuchungId: 'u1',
+      umbuchungPartnerId: 'transfer-partner',
+    });
+    const transferCorrection = event('KORREKTUR', 10, {
+      id: correctionId(transfer.id),
+      korrigiertId: transfer.id,
+      sorte: 'EURO',
+    });
+
+    const wrongIdProjection = project([original, wrongId]);
+    expect(wrongIdProjection.bestandGesamt).toBe(15);
+    expect(wrongIdProjection.anomalies).toContain(
+      'manual-correction-id:non-deterministic-correction-id',
+    );
+
+    const wrongConfigProjection = project([original, wrongConfig]);
+    expect(wrongConfigProjection.bestandGesamt).toBe(15);
+    expect(wrongConfigProjection.anomalies).toContain(
+      'korr_strict-original:wrong-correction-config',
+    );
+
+    const transferProjection = project([transfer, transferCorrection]);
+    expect(transferProjection.bestandGesamt).toBe(-10);
+    expect(transferProjection.anomalies).toContain(
+      'korr_transfer-original:correction-of-transfer',
+    );
+  });
+
+
   it('quarantines same-id events whose immutable content conflicts', () => {
     const a = event('ZUGANG', 15, { id: 'same-id' });
     const b = event('ZUGANG', 17, { id: 'same-id' });
