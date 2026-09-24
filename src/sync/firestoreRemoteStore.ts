@@ -15,13 +15,20 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import type { PalletEvent } from '../domain/types';
+import {
+  RemoteCreateError,
+  type RemoteCreateResult,
+  type RemoteCursor,
+  type RemoteRealtimeEventStore,
+  type RemoteUnsubscribe,
+} from './types';
 const REMOTE_TIMEOUT_MS = 12_000;
 
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs = REMOTE_TIMEOUT_MS,
 ): Promise<T> {
-  let timer: number | undefined;
+  let timer: ReturnType<typeof globalThis.setTimeout> | undefined;
 
   try {
     return await Promise.race([
@@ -37,13 +44,6 @@ async function withTimeout<T>(
   }
 }
 
-import {
-  RemoteCreateError,
-  type RemoteCreateResult,
-  type RemoteCursor,
-  type RemoteRealtimeEventStore,
-  type RemoteUnsubscribe,
-} from './types';
 
 function toFirestoreEvent(event: PalletEvent): Record<string, unknown> {
   const data: Record<string, unknown> = {
