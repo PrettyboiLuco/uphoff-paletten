@@ -106,6 +106,7 @@ export function App() {
   const [lastRetryError, setLastRetryError] = useState<string | null>(null);
   const [backendState, setBackendState] = useState<BackendState>('INITIALIZING');
   const [backendUid, setBackendUid] = useState<string | null>(null);
+  const [backendRole, setBackendRole] = useState<'ADMIN' | 'USER' | null>(null);
   const [bookingReady, setBookingReady] = useState(false);
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -443,6 +444,8 @@ export function App() {
           return;
         }
 
+        setBackendRole(runtime.role ?? null);
+
         await controller.db.meta.put({
           key: 'approvedDeviceUid',
           value: runtime.uid,
@@ -709,6 +712,60 @@ export function App() {
     } catch {
       setError('Buchung wurde nicht gespeichert. Bitte erneut versuchen.');
     }
+  };
+
+  const setPhysicalStock = async (
+    palletId: string,
+    targetStock: number,
+    kind: 'INITIAL' | 'INVENTORY',
+  ) => {
+    const controller = controllerRef.current;
+    const pallet = PALLET_TYPES.find((item) => item.id === palletId);
+
+    if (!controller || !pallet || backendRole !== 'ADMIN') {
+      throw new Error('admin-required');
+    }
+    if (!Number.isInteger(targetStock) || targetStock < 0) {
+      throw new Error('invalid-target-stock');
+    }
+
+    const currentProjection = await loadProjection(controller.db);
+    const current = currentProjection.bestandJeSorte[palletId] ?? 0;
+
+    if (kind === 'INITIAL') {
+      const existing = await controller.db.events
+        .where('sorte')
+        .equals(palletId)
+        .filter((event) => event.syncState !== 'REJECTED')
+        .count();
+
+      if (existing > 0) {
+        throw new Error('initial-stock-requires-empty-sort');
+      }
+      if (targetStock === 0) {
+        throw new Error('initial-stock-zero-needs-no-event');
+      }
+
+      await controller.adminAdjustment(
+        'ANFANGSBESTAND',
+        pallet,
+        targetStock,
+      );
+    } else {
+      const delta = targetStock - current;
+      if (delta === 0) {
+        throw new Error('inventory-no-change');
+      }
+
+      await controller.adminAdjustment(
+        'INVENTUR',
+        pallet,
+        delta,
+      );
+    }
+
+    await refreshLocalState(controller);
+    await pushPending(controller);
   };
 
   const undoLastProcess = async () => {
@@ -1185,6 +1242,8 @@ export function App() {
           db={controllerRef.current.db}
           remote={remoteRef.current}
           deviceId={backendUid}
+          isAdmin={backendRole === 'ADMIN'}
+          onSetPhysicalStock={setPhysicalStock}
           onClose={() => setOpsOpen(false)}
           onDataChanged={async () => {
             const controller = controllerRef.current;
