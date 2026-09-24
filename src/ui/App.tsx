@@ -351,15 +351,19 @@ export function App() {
         }
 
         if (runtime.status === 'AWAITING_APPROVAL') {
-          setBackendState('AWAITING_APPROVAL');
           const approved = await controller.db.meta.get(
             'approvedDeviceUid',
           );
-          setBookingReady(
-            Boolean(
-              runtime.uid
-              && approved?.value === runtime.uid,
-            ),
+          const wasApproved = Boolean(
+            runtime.uid
+            && approved?.value === runtime.uid,
+          );
+
+          setBookingReady(wasApproved);
+          setBackendState(
+            wasApproved && !navigator.onLine
+              ? 'OFFLINE'
+              : 'AWAITING_APPROVAL',
           );
           return;
         }
