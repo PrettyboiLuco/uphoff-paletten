@@ -26,7 +26,10 @@ import {
   type PeriodStatistics,
   type StatisticsPeriodKind,
 } from '../statistics/statistics';
-import { getFirebaseRuntime } from '../sync/firebaseRuntime';
+import {
+  checkCurrentDeviceEnrollment,
+  getFirebaseRuntime,
+} from '../sync/firebaseRuntime';
 import { getSyncHealth } from '../sync/health';
 import { runFullSync, startRealtimeSync } from '../sync/reconcile';
 import { runSyncPass } from '../sync/syncEngine';
@@ -164,6 +167,42 @@ export function App() {
     } catch {
       // The UI must remain usable even if diagnostic logging itself fails.
     }
+  };
+
+  const verifyDeviceStillAllowed = async (
+    controller: LocalBookingController,
+  ): Promise<boolean | null> => {
+    const enrollment = await checkCurrentDeviceEnrollment();
+
+    if (enrollment === 'DISABLED') {
+      setBookingReady(false);
+      setBackendState('DISABLED');
+      setError(
+        'Dieses Gerät wurde gesperrt. Neue Buchungen sind bis zur erneuten Freigabe deaktiviert.',
+      );
+      await recordSyncError(
+        controller,
+        'DEVICE_DISABLED_DURING_SESSION',
+        'device-disabled',
+      );
+      return false;
+    }
+
+    if (enrollment === 'MISSING') {
+      setBookingReady(false);
+      setBackendState('AWAITING_APPROVAL');
+      setError(
+        'Die Gerätefreigabe ist nicht mehr vorhanden. Neue Buchungen sind bis zur erneuten Freigabe deaktiviert.',
+      );
+      await recordSyncError(
+        controller,
+        'DEVICE_ENROLLMENT_MISSING',
+        'device-enrollment-missing',
+      );
+      return false;
+    }
+
+    return enrollment === 'ACTIVE' ? true : null;
   };
 
   const enqueueSync = (
