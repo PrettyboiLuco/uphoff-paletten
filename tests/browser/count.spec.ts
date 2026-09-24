@@ -114,6 +114,24 @@ test('statistics screen uses the same durable events as counting', async ({ page
   await expect(page.locator('.stats-grid div').nth(1).locator('strong')).toHaveText('15');
 });
 
+
+test('statistics exposes stock history, metric toggle and all per-sort stock cells', async ({ page }) => {
+  const row = page.locator('.pallet-row').first();
+  await row.locator('.stack-button').click();
+
+  await page.getByRole('button', { name: 'STATISTIK' }).click();
+
+  await expect(page.locator('.stock-chart-card')).toBeVisible();
+  await expect(page.locator('.stock-chart-line')).toHaveAttribute(
+    'd',
+    /M .*L /,
+  );
+  await expect(page.locator('.stock-strip > div')).toHaveCount(7);
+
+  await page.getByRole('button', { name: 'DAZU', exact: true }).click();
+  await expect(page.locator('.bar-fill').first()).toHaveClass(/incoming/);
+});
+
 test('count and statistics pages fit without vertical document scrolling on target viewport', async ({ page }) => {
   const countOverflow = await page.evaluate(
     () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
