@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { UphoffLocalDb } from '../persistence/localDb';
+import { loadProjection, type UphoffLocalDb } from '../persistence/localDb';
 import {
   createCsvAudit,
   createJsonBackup,
@@ -12,11 +12,18 @@ import { logOperationalError, recentOperationalErrors } from './errorLog';
 import { localHealthSnapshot, runServerSelfTest, type SelfTestResult } from './selfTest';
 import type { RemoteReadableEventStore } from '../sync/types';
 import type { DeviceHealthSnapshot, OperationalError } from './types';
+import { PALLET_TYPES } from '../ui/config';
 
 interface Props {
   db: UphoffLocalDb;
   remote: RemoteReadableEventStore | null;
   deviceId: string | null;
+  isAdmin: boolean;
+  onSetPhysicalStock: (
+    palletId: string,
+    targetStock: number,
+    kind: 'INITIAL' | 'INVENTORY',
+  ) => Promise<void>;
   onClose: () => void;
   onDataChanged: () => void | Promise<void>;
 }
@@ -33,24 +40,42 @@ function downloadText(filename: string, text: string, type: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function OpsPanel({ db, remote, deviceId, onClose, onDataChanged }: Props) {
+export function OpsPanel({
+  db,
+  remote,
+  deviceId,
+  isAdmin,
+  onSetPhysicalStock,
+  onClose,
+  onDataChanged,
+}: Props) {
   const [health, setHealth] = useState<DeviceHealthSnapshot | null>(null);
   const [backupDue, setBackupDue] = useState(true);
   const [errors, setErrors] = useState<OperationalError[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
   const [serverTest, setServerTest] = useState<SelfTestResult | null>(null);
+  const [stocks, setStocks] = useState<Record<string, number>>({});
+  const [adminSort, setAdminSort] = useState(PALLET_TYPES[0]?.id ?? '');
+  const [adminTarget, setAdminTarget] = useState('');
+  const [adminConfirm, setAdminConfirm] = useState<{
+    kind: 'INITIAL' | 'INVENTORY';
+    palletId: string;
+    target: number;
+  } | null>(null);
 
   const refresh = async () => {
     const now = new Date().toISOString();
-    const [nextHealth, due, recent] = await Promise.all([
+    const [nextHealth, due, recent, projection] = await Promise.all([
       localHealthSnapshot(db, now),
       isExternalBackupDue(db, now),
       recentOperationalErrors(db, 10),
+      loadProjection(db),
     ]);
     setHealth(nextHealth);
     setBackupDue(due);
     setErrors(recent);
+    setStocks(projection.bestandJeSorte);
   };
 
   useEffect(() => {
@@ -171,6 +196,56 @@ export function OpsPanel({ db, remote, deviceId, onClose, onDataChanged }: Props
     }
   };
 
+  const requestAdminStockChange = (
+    kind: 'INITIAL' | 'INVENTORY',
+  ) => {
+    setMessage(null);
+    const target = Number(adminTarget);
+
+    if (!Number.isInteger(target) || target < 0) {
+      setMessage('Bitte einen ganzen Bestand ab 0 eingeben.');
+      return;
+    }
+
+    setAdminConfirm({
+      kind,
+      palletId: adminSort,
+      target,
+    });
+  };
+
+  const confirmAdminStockChange = async () => {
+    if (!adminConfirm) return;
+
+    setMessage(null);
+    try {
+      await onSetPhysicalStock(
+        adminConfirm.palletId,
+        adminConfirm.target,
+        adminConfirm.kind,
+      );
+      setMessage(
+        adminConfirm.kind === 'INITIAL'
+          ? 'Anfangsbestand wurde als eigenes Event gebucht.'
+          : 'Inventurdifferenz wurde als eigenes Event gebucht.',
+      );
+      setAdminConfirm(null);
+      setAdminTarget('');
+      await refresh();
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'initial-stock-requires-empty-sort') {
+        setMessage(
+          'Anfangsbestand ist nur erlaubt, solange für diese Sorte noch keine gültige Buchung existiert.',
+        );
+      } else if (code === 'inventory-no-change') {
+        setMessage('Der eingegebene Bestand entspricht bereits dem aktuellen Stand.');
+      } else {
+        setMessage('Admin-Buchung wurde nicht übernommen.');
+      }
+    }
+  };
+
   return (
     <div className="ops-overlay" role="dialog" aria-modal="true" aria-label="Daten und Betrieb">
       <section className="ops-panel">
@@ -222,6 +297,89 @@ export function OpsPanel({ db, remote, deviceId, onClose, onDataChanged }: Props
             <span>Neu: {restoreResult.inserted}</span>
             <span>Vorhanden: {restoreResult.merged}</span>
             <span>Outbox: {restoreResult.outboxRestored}</span>
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="admin-stock-panel">
+            <div className="admin-stock-title">
+              <strong>ADMIN · BESTAND</strong>
+              <span>
+                Anfangsbestand nur beim ersten Einrichten. Danach Inventur auf den tatsächlich gezählten Bestand buchen.
+              </span>
+            </div>
+
+            <div className="admin-stock-controls">
+              <select
+                aria-label="Admin Palettensorte"
+                value={adminSort}
+                onChange={(event) => {
+                  setAdminSort(event.target.value);
+                  setAdminConfirm(null);
+                }}
+              >
+                {PALLET_TYPES.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+
+              <div className="admin-current">
+                <span>AKTUELL</span>
+                <strong>{stocks[adminSort] ?? 0}</strong>
+              </div>
+
+              <input
+                aria-label="Tatsächlicher Bestand"
+                inputMode="numeric"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Ist-Bestand"
+                value={adminTarget}
+                onChange={(event) => {
+                  setAdminTarget(event.target.value);
+                  setAdminConfirm(null);
+                }}
+              />
+            </div>
+
+            <div className="admin-stock-actions">
+              <button
+                onClick={() => requestAdminStockChange('INITIAL')}
+              >
+                ANFANGSBESTAND
+              </button>
+              <button
+                className="primary"
+                onClick={() => requestAdminStockChange('INVENTORY')}
+              >
+                INVENTUR
+              </button>
+            </div>
+
+            {adminConfirm && (
+              <div className="admin-confirm" role="alert">
+                <span>
+                  {adminConfirm.kind === 'INITIAL'
+                    ? 'Anfangsbestand'
+                    : 'Inventur'}{' '}
+                  wirklich auf {adminConfirm.target} setzen?
+                </span>
+                <div>
+                  <button onClick={() => setAdminConfirm(null)}>
+                    ABBRECHEN
+                  </button>
+                  <button
+                    className="primary"
+                    onClick={() => void confirmAdminStockChange()}
+                  >
+                    BESTÄTIGEN
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
