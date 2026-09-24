@@ -811,3 +811,8 @@ button:disabled { opacity: .48; cursor: default; }
     padding: 4px 7px;
   }
 }
+
+.sync-stale .sync-dot {
+  background: var(--warning);
+  box-shadow: 0 0 12px rgba(240,184,76,.45);
+}
