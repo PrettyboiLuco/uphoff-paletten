@@ -43,6 +43,27 @@ test('pointer swipe across a booking button does not create a booking', async ({
   await expect(page.locator('.pallet-row').first().locator('.row-stock strong')).toHaveText('0');
 });
 
+
+test('negative inventory warns without blocking the booking', async ({ page }) => {
+  const row = page.locator('.pallet-row').first();
+
+  await row.locator('.adjust-button').first().click();
+
+  await expect(row.locator('.row-stock strong')).toHaveText('-1');
+  await expect(row).toHaveClass(/negative-stock/);
+  await expect(page.locator('.last-action')).toContainText('VORZEICHEN PRÜFEN');
+});
+
+test('zero-net linked process is called out explicitly', async ({ page }) => {
+  const row = page.locator('.pallet-row').first();
+
+  await row.locator('.adjust-button').last().click();
+  await row.locator('.adjust-button').first().click();
+
+  await expect(row.locator('.row-stock strong')).toHaveText('0');
+  await expect(page.locator('.last-action')).toContainText('NETTO 0 PRÜFEN');
+});
+
 test('outgoing mode is visually and functionally distinct', async ({ page }) => {
   await page.getByRole('button', { name: 'AUSGANG' }).click();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-mode', 'ausgang');
