@@ -154,6 +154,45 @@ describe('E2.4 multi-client convergence and fault injection', () => {
   });
 
 
+  it('applies realtime events in order before advancing the cursor', async () => {
+    const remote = new SharedRemote();
+    const client = db('e24-realtime-ordered');
+    const errors: unknown[] = [];
+    let releaseFirst!: () => void;
+    let firstApplied!: () => void;
+    const firstReady = new Promise<void>((resolve) => {
+      firstApplied = resolve;
+    });
+    const holdFirst = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const unsubscribe = await startRealtimeSync(
+      client,
+      remote,
+      () => '2026-09-23T10:00:02Z',
+      (error) => errors.push(error),
+      async (_result, received) => {
+        if (received.id === 'first') {
+          firstApplied();
+          await holdFirst;
+        }
+      },
+    );
+
+    const first = remote.createEvent(event('first', 'phone-a', 15));
+    await firstReady;
+    const second = remote.createEvent(event('second', 'phone-b', 17));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(await client.events.get('second')).toBeUndefined();
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(await client.events.count()).toBe(2);
+    expect(errors).toEqual([]);
+    unsubscribe();
+  });
+
   it('uses an overlapping incremental cursor after the first full reconciliation', async () => {
     const remote = new SharedRemote();
     const client = db('e24-incremental-cursor');
