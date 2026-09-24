@@ -638,6 +638,78 @@ describe('E2.3 Firestore security rules', () => {
   });
 
 
+
+  it('allows only active devices to publish their own validated heartbeat', async () => {
+    const userDb = env.authenticatedContext('iphone-user').firestore();
+    const heartbeat = {
+      uid: 'iphone-user',
+      lastSeen: serverTimestamp(),
+      pendingCount: 0,
+      rejectedCount: 0,
+      eventCount: 5,
+      appVersion: '0.1.0',
+      syncState: 'SYNCHRON',
+      checkCodeJson: '{"EURO":{"count":5,"sum":45}}',
+    };
+
+    await assertSucceeds(
+      setDoc(doc(userDb, 'heartbeats/iphone-user'), heartbeat),
+    );
+
+    await assertFails(
+      setDoc(doc(userDb, 'heartbeats/ipad-admin'), {
+        ...heartbeat,
+        uid: 'ipad-admin',
+      }),
+    );
+
+    await assertFails(
+      setDoc(doc(userDb, 'heartbeats/iphone-user-invalid'), {
+        ...heartbeat,
+        uid: 'iphone-user-invalid',
+        pendingCount: -1,
+      }),
+    );
+
+    const blockedDb = env.authenticatedContext('blocked-user').firestore();
+    await assertFails(
+      setDoc(doc(blockedDb, 'heartbeats/blocked-user'), {
+        ...heartbeat,
+        uid: 'blocked-user',
+      }),
+    );
+  });
+
+  it('keeps device heartbeat visibility private except for admins', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'heartbeats/iphone-user'), {
+        uid: 'iphone-user',
+        lastSeen: Timestamp.now(),
+        pendingCount: 0,
+        rejectedCount: 0,
+        eventCount: 2,
+        appVersion: '0.1.0',
+        syncState: 'SYNCHRON',
+        checkCodeJson: '{}',
+      });
+    });
+
+    const own = env.authenticatedContext('iphone-user').firestore();
+    await assertSucceeds(
+      getDoc(doc(own, 'heartbeats/iphone-user')),
+    );
+
+    const other = env.authenticatedContext('blocked-user').firestore();
+    await assertFails(
+      getDoc(doc(other, 'heartbeats/iphone-user')),
+    );
+
+    const admin = env.authenticatedContext('ipad-admin').firestore();
+    await assertSucceeds(
+      getDoc(doc(admin, 'heartbeats/iphone-user')),
+    );
+  });
+
   it('allows active devices to read events but not blocked devices', async () => {
     await env.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), 'events/readable'), {
