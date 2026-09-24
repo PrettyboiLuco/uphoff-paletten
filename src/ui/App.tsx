@@ -406,13 +406,26 @@ export function App() {
             runtime.uid
             && approved?.value === runtime.uid,
           );
+          const temporaryAccessFailure =
+            runtime.reason === 'device-access-denied';
+          const mayContinueOffline =
+            wasApproved && temporaryAccessFailure;
 
-          setBookingReady(wasApproved);
+          setBookingReady(mayContinueOffline);
           setBackendState(
-            wasApproved && !navigator.onLine
+            mayContinueOffline
               ? 'OFFLINE'
               : 'AWAITING_APPROVAL',
           );
+
+          if (
+            runtime.reason === 'device-not-enrolled'
+            && wasApproved
+          ) {
+            setError(
+              'Die frühere Gerätefreigabe existiert auf dem Server nicht mehr. Neue Buchungen bleiben bis zur erneuten Freigabe gesperrt.',
+            );
+          }
           return;
         }
 
