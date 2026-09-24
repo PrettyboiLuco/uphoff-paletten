@@ -29,7 +29,6 @@ import {
 import { getFirebaseRuntime } from '../sync/firebaseRuntime';
 import { getSyncHealth } from '../sync/health';
 import { runFullSync, startRealtimeSync } from '../sync/reconcile';
-import { runSyncPass } from '../sync/syncEngine';
 import type { RemoteRealtimeEventStore, RemoteUnsubscribe } from '../sync/types';
 import { LocalBookingController, type BookingAction } from './bookingController';
 import { PALLET_TYPES } from './config';
@@ -169,27 +168,6 @@ export function App() {
     const task = syncQueueRef.current.then(work, work);
     syncQueueRef.current = task.catch(() => undefined);
     return task;
-  };
-
-  const pushPending = (
-    controller: LocalBookingController,
-  ): Promise<void> => {
-    if (!remoteRef.current) return Promise.resolve();
-
-    return enqueueSync(async () => {
-      const remote = remoteRef.current;
-      if (!remote) return;
-
-      try {
-        await runSyncPass(controller.db, remote, Date.now());
-        setBackendState(navigator.onLine ? 'ACTIVE' : 'OFFLINE');
-      } catch (caught) {
-        setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
-        await recordSyncError(controller, 'SYNC_PUSH_FAILED', caught);
-      } finally {
-        await refreshLocalState(controller);
-      }
-    });
   };
 
   const fullSync = (
@@ -364,7 +342,7 @@ export function App() {
 
         retryTimer = window.setInterval(() => {
           if (navigator.onLine && remoteRef.current) {
-            void pushPending(controller);
+            void fullSync(controller);
           }
         }, 15_000);
 
@@ -442,7 +420,7 @@ export function App() {
       });
 
       await refreshLocalState(controller);
-      await pushPending(controller);
+      await fullSync(controller);
     } catch {
       setError('Buchung wurde nicht gespeichert. Bitte erneut versuchen.');
     }
@@ -457,7 +435,7 @@ export function App() {
       await controller.undoProcess(lastAction.processId);
       setLastAction(null);
       await refreshLocalState(controller);
-      await pushPending(controller);
+      await fullSync(controller);
     } catch {
       setError('Rückgängig konnte nicht vollständig gespeichert werden.');
     }
@@ -797,7 +775,7 @@ export function App() {
             const controller = controllerRef.current;
             if (!controller) return;
             await refreshLocalState(controller);
-            await pushPending(controller);
+            await fullSync(controller);
           }}
         />
       )}
