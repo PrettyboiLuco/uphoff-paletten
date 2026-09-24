@@ -30,6 +30,7 @@ import {
 import {
   checkCurrentDeviceEnrollment,
   getFirebaseRuntime,
+  resetFirebaseRuntimeForRetry,
 } from '../sync/firebaseRuntime';
 import { validateServerPalletConfig } from '../sync/configValidation';
 import { getSyncHealth } from '../sync/health';
@@ -90,6 +91,7 @@ export function App() {
   const remoteRef = useRef<RemoteRealtimeEventStore | null>(null);
   const realtimeStopRef = useRef<RemoteUnsubscribe | null>(null);
   const realtimeNeedsRestartRef = useRef(false);
+  const runtimeNeedsRetryRef = useRef(false);
   const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const swipeStartX = useRef<number | null>(null);
 
@@ -396,6 +398,13 @@ export function App() {
 
     const onOnline = () => {
       setBackendState('INITIALIZING');
+
+      if (!remoteRef.current && runtimeNeedsRetryRef.current) {
+        resetFirebaseRuntimeForRetry();
+        window.location.reload();
+        return;
+      }
+
       void fullSync(controller);
     };
 
@@ -405,7 +414,15 @@ export function App() {
     };
 
     const onVisibility = () => {
-      if (document.visibilityState === 'visible' && remoteRef.current) {
+      if (document.visibilityState !== 'visible') return;
+
+      if (!remoteRef.current && runtimeNeedsRetryRef.current) {
+        resetFirebaseRuntimeForRetry();
+        window.location.reload();
+        return;
+      }
+
+      if (remoteRef.current) {
         void fullSync(controller);
       }
     };
@@ -450,6 +467,10 @@ export function App() {
           value: JSON.stringify(storage),
         });
 
+        window.addEventListener('online', onOnline);
+        window.addEventListener('offline', onOffline);
+        document.addEventListener('visibilitychange', onVisibility);
+
         const runtime = await getFirebaseRuntime();
         if (cancelled) return;
 
@@ -470,6 +491,7 @@ export function App() {
         }
 
         if (runtime.status === 'AWAITING_APPROVAL') {
+          runtimeNeedsRetryRef.current = true;
           const approved = await controller.db.meta.get(
             'approvedDeviceUid',
           );
@@ -501,6 +523,7 @@ export function App() {
         }
 
         if (runtime.status === 'DISABLED') {
+          runtimeNeedsRetryRef.current = false;
           setBackendState('DISABLED');
           setBookingReady(false);
           setError(
@@ -548,6 +571,7 @@ export function App() {
           return;
         }
 
+        runtimeNeedsRetryRef.current = false;
         remoteRef.current = runtime.remote;
 
         let palletConfigUsable = PALLET_CONFIG_READY || allowLocalOnly;
@@ -602,10 +626,6 @@ export function App() {
           runtime.remote,
         );
 
-        window.addEventListener('online', onOnline);
-        window.addEventListener('offline', onOffline);
-        document.addEventListener('visibilitychange', onVisibility);
-
         retryTimer = window.setInterval(() => {
           if (navigator.onLine && remoteRef.current) {
             void pushPending(controller);
@@ -641,6 +661,7 @@ export function App() {
       realtimeStopRef.current?.();
       realtimeStopRef.current = null;
       realtimeNeedsRestartRef.current = false;
+      runtimeNeedsRetryRef.current = false;
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
       document.removeEventListener('visibilitychange', onVisibility);
