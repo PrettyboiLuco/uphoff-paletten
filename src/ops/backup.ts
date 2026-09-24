@@ -164,8 +164,75 @@ function validateBackup(value: unknown): {
   const conflictIds = new Set(value.conflicts.map((item) => item.id));
   if (conflictIds.size !== value.conflicts.length) throw new Error('duplicate-conflict-id-in-backup');
 
+  const eventsById = new Map(
+    value.events.map((event) => [event.id, event] as const),
+  );
+
   for (const item of value.outbox) {
-    if (!eventIds.has(item.eventId)) throw new Error('orphan-outbox-in-backup');
+    const event = eventsById.get(item.eventId);
+    if (!event) throw new Error('orphan-outbox-in-backup');
+    if (
+      event.syncState !== 'LOCAL_ONLY'
+      && event.syncState !== 'PENDING'
+    ) {
+      throw new Error('outbox-for-final-event-in-backup');
+    }
+  }
+
+  for (const event of value.events) {
+    if (
+      (event.syncState === 'LOCAL_ONLY' || event.syncState === 'PENDING')
+      && !outboxIds.has(event.id)
+    ) {
+      throw new Error('pending-event-without-outbox-in-backup');
+    }
+
+    if (event.art === 'ZUGANG') {
+      if (![1, -1, 15, 17].includes(event.delta)) {
+        throw new Error('invalid-zugang-delta-in-backup');
+      }
+    }
+
+    if (event.art === 'ABGANG') {
+      if (![-1, 1, -15, -17].includes(event.delta)) {
+        throw new Error('invalid-abgang-delta-in-backup');
+      }
+    }
+
+    if (event.art === 'KORREKTUR') {
+      const original = event.korrigiertId
+        ? eventsById.get(event.korrigiertId)
+        : undefined;
+
+      if (
+        !original
+        || original.art === 'KORREKTUR'
+        || original.art === 'UMBUCHUNG'
+        || event.id !== `korr_${original.id}`
+        || event.sorte !== original.sorte
+        || event.konfigVersion !== original.konfigVersion
+        || event.delta !== -original.delta
+      ) {
+        throw new Error('invalid-correction-link-in-backup');
+      }
+    }
+
+    if (event.art === 'UMBUCHUNG') {
+      const partner = event.umbuchungPartnerId
+        ? eventsById.get(event.umbuchungPartnerId)
+        : undefined;
+
+      if (
+        !partner
+        || partner.art !== 'UMBUCHUNG'
+        || partner.umbuchungId !== event.umbuchungId
+        || partner.umbuchungPartnerId !== event.id
+        || partner.sorte === event.sorte
+        || partner.delta + event.delta !== 0
+      ) {
+        throw new Error('invalid-transfer-pair-in-backup');
+      }
+    }
   }
 
   return {
