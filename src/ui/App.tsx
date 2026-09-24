@@ -709,7 +709,10 @@ export function App() {
 
       {tab === 'COUNT' ? (
         <section className="count-page">
-          <div className="hero-total" style={blockStyle('TOTAL')}>
+          <div
+            className={`hero-total ${total < 0 ? 'negative' : ''}`}
+            style={blockStyle('TOTAL')}
+          >
             <span>PALETTEN INSGESAMT</span>
             <strong aria-live="polite">
               {total.toLocaleString('de-DE')}
@@ -745,8 +748,8 @@ export function App() {
                   <span>Stapel {type.stackSize}</span>
                 </div>
                 <div className="row-stock">
-                  <span>Bestand</span>
-                  <strong>{stocks[type.id] ?? 0}</strong>
+                  <span>{negative ? 'NEGATIV' : 'Bestand'}</span>
+                  <strong>{stock}</strong>
                 </div>
                 <button
                   className="stack-button"
@@ -783,7 +786,8 @@ export function App() {
                   +1
                 </button>
               </article>
-            ))}
+              );
+            })}
           </div>
 
           <div
