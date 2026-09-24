@@ -233,6 +233,93 @@ describe('E6 backup, self-test and operations', () => {
   });
 
 
+  it('rejects pending events that have no matching outbox entry', async () => {
+    const target = db('e6-pending-without-outbox');
+    const pending = event('pending-orphan', 15, {
+      syncState: 'PENDING',
+    });
+    const malformed = {
+      manifest: {
+        schemaVersion: 1,
+        exportedAt: '2026-09-23T12:00:00Z',
+        app: 'uphoff-paletten',
+        eventCount: 1,
+        outboxCount: 0,
+        conflictCount: 0,
+      },
+      events: [pending],
+      outbox: [],
+      conflicts: [],
+    };
+
+    await expect(
+      restoreJsonBackup(target, JSON.stringify(malformed)),
+    ).rejects.toThrow('pending-event-without-outbox-in-backup');
+
+    expect(await target.events.count()).toBe(0);
+    await target.close();
+  });
+
+  it('rejects a correction whose link or inverse delta is inconsistent', async () => {
+    const target = db('e6-invalid-correction');
+    const original = event('original-backup', 15);
+    const correction = event('korr_original-backup', -14, {
+      art: 'KORREKTUR',
+      korrigiertId: 'original-backup',
+      sorte: 'EURO',
+    });
+    const malformed = {
+      manifest: {
+        schemaVersion: 1,
+        exportedAt: '2026-09-23T12:00:00Z',
+        app: 'uphoff-paletten',
+        eventCount: 2,
+        outboxCount: 0,
+        conflictCount: 0,
+      },
+      events: [original, correction],
+      outbox: [],
+      conflicts: [],
+    };
+
+    await expect(
+      restoreJsonBackup(target, JSON.stringify(malformed)),
+    ).rejects.toThrow('invalid-correction-link-in-backup');
+
+    expect(await target.events.count()).toBe(0);
+    await target.close();
+  });
+
+  it('refuses to auto-restore pending writes owned by another device identity', async () => {
+    const source = db('e6-foreign-pending-source');
+    await persistAndQueueEvent(
+      source,
+      event('foreign-pending', 15, {
+        geraetId: 'old-device',
+        syncState: 'LOCAL_ONLY',
+      }),
+      1000,
+    );
+    const json = await createJsonBackup(
+      source,
+      '2026-09-23T12:00:00Z',
+    );
+
+    const target = db('e6-foreign-pending-target');
+    await expect(
+      restoreJsonBackup(target, json, 'new-device'),
+    ).rejects.toThrow(
+      'foreign-pending-event-in-backup:foreign-pending',
+    );
+
+    expect(await target.events.count()).toBe(0);
+    expect(await target.outbox.count()).toBe(0);
+
+    await source.close();
+    await target.close();
+  });
+
+
   it('creates semicolon CSV with escaped user-visible values', async () => {
     const database = db('e6-csv');
     await database.events.add(
