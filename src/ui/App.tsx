@@ -22,6 +22,7 @@ import {
   comparePeriod,
   periodWindow,
   statisticsForRange,
+  stockSeries,
   type PeriodComparison,
   type PeriodStatistics,
   type StatisticsPeriodKind,
@@ -110,8 +111,15 @@ export function App() {
   sortFilterRef.current = sortFilter;
 
   const [stats, setStats] = useState<PeriodStatistics>(emptyStats);
+  const [todayStats, setTodayStats] =
+    useState<PeriodStatistics>(emptyStats);
   const [comparison, setComparison] =
     useState<PeriodComparison>(emptyComparison);
+  const [stockPoints, setStockPoints] = useState<
+    Array<{ at: string; bestand: number }>
+  >([]);
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+  const [barMetric, setBarMetric] = useState<'OUT' | 'IN'>('OUT');
 
   const initialProfile = profileForViewport(
     typeof window === 'undefined' ? 390 : window.innerWidth,
@@ -135,9 +143,16 @@ export function App() {
     const events = await listEvents(controller.db);
     const now = new Date().toISOString();
     const window = periodWindow(nextPeriod, now);
+    const todayWindow = periodWindow('TODAY', now);
     const sort = nextSort === 'ALL' ? undefined : nextSort;
+
     setStats(statisticsForRange(events, window.current, sort));
+    setTodayStats(
+      statisticsForRange(events, todayWindow.current),
+    );
     setComparison(comparePeriod(events, nextPeriod, now, sort));
+    setStockPoints(stockSeries(events, window.current, sort));
+    setScrubIndex(null);
   };
 
   const refreshLocalState = async (controller: LocalBookingController) => {
@@ -512,14 +527,71 @@ export function App() {
     [stocks],
   );
 
-  const maxOutgoing = useMemo(
+  const maxBarValue = useMemo(
     () =>
       Math.max(
         1,
-        ...Object.values(stats.bySort).map((value) => value.weggekommen),
+        ...Object.values(stats.bySort).map((value) =>
+          barMetric === 'OUT'
+            ? value.weggekommen
+            : value.dazugekommen,
+        ),
       ),
-    [stats.bySort],
+    [barMetric, stats.bySort],
   );
+
+  const stockChart = useMemo(() => {
+    const width = 1000;
+    const height = 180;
+    const padX = 18;
+    const padY = 16;
+
+    if (stockPoints.length === 0) {
+      return {
+        width,
+        height,
+        path: '',
+        coords: [] as Array<{ x: number; y: number }>,
+        min: 0,
+        max: 0,
+      };
+    }
+
+    const times = stockPoints.map((point) => Date.parse(point.at));
+    const values = stockPoints.map((point) => point.bestand);
+    const minTime = Math.min(...times);
+    const maxTime = Math.max(...times);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const timeSpan = Math.max(1, maxTime - minTime);
+    const valueSpan = Math.max(1, max - min);
+
+    const coords = stockPoints.map((point, index) => ({
+      x:
+        padX
+        + ((times[index]! - minTime) / timeSpan)
+          * (width - padX * 2),
+      y:
+        height
+        - padY
+        - ((point.bestand - min) / valueSpan)
+          * (height - padY * 2),
+    }));
+
+    return {
+      width,
+      height,
+      min,
+      max,
+      coords,
+      path: coords
+        .map(
+          (point, index) =>
+            `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`,
+        )
+        .join(' '),
+    };
+  }, [stockPoints]);
 
   const book = async (
     palletId: string,
@@ -594,6 +666,27 @@ export function App() {
       width: `${(item.w / layout.cols) * 100}%`,
       marginLeft: `${(item.x / layout.cols) * 100}%`,
     };
+  };
+
+  const updateScrubFromPointer = (
+    event: ReactPointerEvent<SVGSVGElement>,
+  ) => {
+    if (stockChart.coords.length === 0) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const x =
+      ((event.clientX - box.left) / Math.max(1, box.width))
+      * stockChart.width;
+
+    let best = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    stockChart.coords.forEach((point, index) => {
+      const distance = Math.abs(point.x - x);
+      if (distance < bestDistance) {
+        best = index;
+        bestDistance = distance;
+      }
+    });
+    setScrubIndex(best);
   };
 
   const outgoingChange = comparison.weggekommen.percentChange;
@@ -750,7 +843,11 @@ export function App() {
                 <div className="type-accent" />
                 <div className="type-copy">
                   <strong>{type.name}</strong>
-                  <span>Stapel {type.stackSize}</span>
+                  <span>
+                    Stapel {type.stackSize} · Heute{' '}
+                    {(todayStats.bySort[type.id]?.nettoBestandsaenderung ?? 0) > 0 ? '+' : ''}
+                    {todayStats.bySort[type.id]?.nettoBestandsaenderung ?? 0}
+                  </span>
                 </div>
                 <div className="row-stock">
                   <span>{negative ? 'NEGATIV' : 'Bestand'}</span>
@@ -879,19 +976,104 @@ export function App() {
             </div>
           </div>
 
-          <div className="bar-chart" aria-label="Weggekommen je Sorte">
+          <div className="stock-chart-card">
+            <div className="chart-head">
+              <div>
+                <span>BESTANDSVERLAUF</span>
+                <strong>
+                  {scrubIndex === null
+                    ? (stockPoints.at(-1)?.bestand ?? 0)
+                    : (stockPoints[scrubIndex]?.bestand ?? 0)}
+                </strong>
+              </div>
+              <small>
+                {scrubIndex === null
+                  ? `Spanne ${stockChart.min}–${stockChart.max}`
+                  : new Date(
+                      stockPoints[scrubIndex]?.at ?? '',
+                    ).toLocaleString('de-DE', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+              </small>
+            </div>
+
+            <svg
+              className="stock-chart"
+              viewBox={`0 0 ${stockChart.width} ${stockChart.height}`}
+              preserveAspectRatio="none"
+              aria-label="Bestandsverlauf"
+              onPointerDown={updateScrubFromPointer}
+              onPointerMove={(event) => {
+                if (event.buttons > 0 || event.pointerType === 'touch') {
+                  updateScrubFromPointer(event);
+                }
+              }}
+              onPointerLeave={() => setScrubIndex(null)}
+            >
+              <path
+                className="stock-chart-line"
+                d={stockChart.path}
+                fill="none"
+              />
+              {scrubIndex !== null
+                && stockChart.coords[scrubIndex] && (
+                  <>
+                    <line
+                      className="stock-chart-guide"
+                      x1={stockChart.coords[scrubIndex]!.x}
+                      x2={stockChart.coords[scrubIndex]!.x}
+                      y1="0"
+                      y2={stockChart.height}
+                    />
+                    <circle
+                      className="stock-chart-dot"
+                      cx={stockChart.coords[scrubIndex]!.x}
+                      cy={stockChart.coords[scrubIndex]!.y}
+                      r="8"
+                    />
+                  </>
+                )}
+            </svg>
+          </div>
+
+          <div className="bar-chart">
+            <div className="bar-chart-head">
+              <span>BEWEGUNG JE SORTE</span>
+              <div role="group" aria-label="Balkenmetrik">
+                <button
+                  className={barMetric === 'OUT' ? 'active' : ''}
+                  onClick={() => setBarMetric('OUT')}
+                >
+                  WEG
+                </button>
+                <button
+                  className={barMetric === 'IN' ? 'active' : ''}
+                  onClick={() => setBarMetric('IN')}
+                >
+                  DAZU
+                </button>
+              </div>
+            </div>
+
             {PALLET_TYPES.filter(
               (type) => sortFilter === 'ALL' || type.id === sortFilter,
             ).map((type) => {
-              const value = stats.bySort[type.id]?.weggekommen ?? 0;
+              const value =
+                barMetric === 'OUT'
+                  ? (stats.bySort[type.id]?.weggekommen ?? 0)
+                  : (stats.bySort[type.id]?.dazugekommen ?? 0);
+
               return (
                 <div className="bar-row" key={type.id}>
                   <span>{type.name}</span>
                   <div className="bar-track">
                     <div
-                      className="bar-fill"
+                      className={`bar-fill ${barMetric === 'IN' ? 'incoming' : ''}`}
                       style={{
-                        width: `${(value / maxOutgoing) * 100}%`,
+                        width: `${(value / maxBarValue) * 100}%`,
                       }}
                     />
                   </div>
@@ -899,6 +1081,15 @@ export function App() {
                 </div>
               );
             })}
+          </div>
+
+          <div className="stock-strip" aria-label="Bestand je Sorte">
+            {PALLET_TYPES.map((type) => (
+              <div key={type.id}>
+                <span>{type.name}</span>
+                <strong>{stocks[type.id] ?? 0}</strong>
+              </div>
+            ))}
           </div>
         </section>
       )}
