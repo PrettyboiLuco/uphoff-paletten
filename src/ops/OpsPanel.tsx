@@ -154,7 +154,7 @@ export function OpsPanel({ db, remote, deviceId, onClose, onDataChanged }: Props
     setRestoreResult(null);
 
     try {
-      const result = await restoreJsonBackup(db, await file.text());
+      const result = await restoreJsonBackup(db, await file.text(), deviceId ?? undefined);
       setRestoreResult(result);
       setMessage('Wiederherstellung geprüft und übernommen.');
       await onDataChanged();
