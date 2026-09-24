@@ -89,6 +89,7 @@ export function App() {
   const controllerRef = useRef<LocalBookingController | null>(null);
   const remoteRef = useRef<RemoteRealtimeEventStore | null>(null);
   const realtimeStopRef = useRef<RemoteUnsubscribe | null>(null);
+  const realtimeNeedsRestartRef = useRef(false);
   const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const swipeStartX = useRef<number | null>(null);
 
@@ -228,6 +229,49 @@ export function App() {
     return enrollment === 'ACTIVE' ? true : null;
   };
 
+  const installRealtimeSync = async (
+    controller: LocalBookingController,
+    remote: RemoteRealtimeEventStore,
+  ): Promise<void> => {
+    realtimeStopRef.current?.();
+    realtimeStopRef.current = null;
+
+    const unsubscribe = await startRealtimeSync(
+      controller.db,
+      remote,
+      () => new Date().toISOString(),
+      (caught) => {
+        realtimeNeedsRestartRef.current = true;
+        realtimeStopRef.current?.();
+        realtimeStopRef.current = null;
+
+        void (async () => {
+          const enrollment = navigator.onLine
+            ? await verifyDeviceStillAllowed(controller)
+            : null;
+
+          if (enrollment !== false) {
+            setBackendState(
+              navigator.onLine ? 'ERROR' : 'OFFLINE',
+            );
+          }
+
+          await recordSyncError(
+            controller,
+            'REALTIME_LISTENER_FAILED',
+            caught,
+          );
+        })();
+      },
+      async () => {
+        await refreshLocalState(controller);
+      },
+    );
+
+    realtimeStopRef.current = unsubscribe;
+    realtimeNeedsRestartRef.current = false;
+  };
+
   const enqueueSync = (
     work: () => Promise<void>,
   ): Promise<void> => {
@@ -293,8 +337,34 @@ export function App() {
             : true;
 
         if (enrollment !== false) {
+          let realtimeHealthy = true;
+
+          if (
+            navigator.onLine
+            && realtimeNeedsRestartRef.current
+            && remoteRef.current
+          ) {
+            try {
+              await installRealtimeSync(
+                controller,
+                remoteRef.current,
+              );
+            } catch (listenerError) {
+              realtimeHealthy = false;
+              await recordSyncError(
+                controller,
+                'REALTIME_RESTART_FAILED',
+                listenerError,
+              );
+            }
+          }
+
           setBackendState(
-            navigator.onLine ? 'ACTIVE' : 'OFFLINE',
+            !navigator.onLine
+              ? 'OFFLINE'
+              : realtimeHealthy
+                ? 'ACTIVE'
+                : 'ERROR',
           );
         }
       } catch (caught) {
@@ -527,32 +597,9 @@ export function App() {
         }
         if (cancelled) return;
 
-        realtimeStopRef.current = await startRealtimeSync(
-          controller.db,
+        await installRealtimeSync(
+          controller,
           runtime.remote,
-          () => new Date().toISOString(),
-          (caught) => {
-            void (async () => {
-              const enrollment = navigator.onLine
-                ? await verifyDeviceStillAllowed(controller)
-                : null;
-
-              if (enrollment !== false) {
-                setBackendState(
-                  navigator.onLine ? 'ERROR' : 'OFFLINE',
-                );
-              }
-
-              await recordSyncError(
-                controller,
-                'REALTIME_LISTENER_FAILED',
-                caught,
-              );
-            })();
-          },
-          async () => {
-            await refreshLocalState(controller);
-          },
         );
 
         window.addEventListener('online', onOnline);
@@ -593,6 +640,7 @@ export function App() {
       if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
       realtimeStopRef.current?.();
       realtimeStopRef.current = null;
+      realtimeNeedsRestartRef.current = false;
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
       document.removeEventListener('visibilitychange', onVisibility);
