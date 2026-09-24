@@ -84,7 +84,11 @@ export function App() {
   const [mode, setMode] = useState<CountMode>('EINGANG');
   const [stocks, setStocks] = useState<Record<string, number>>({});
   const [syncState, setSyncState] = useState<
-    'SYNCHRON' | 'PENDING' | 'REJECTED' | 'NEVER_SYNCED'
+    | 'SYNCHRON'
+    | 'PENDING'
+    | 'REJECTED'
+    | 'NEVER_SYNCED'
+    | 'STALE'
   >('NEVER_SYNCED');
   const [pendingCount, setPendingCount] = useState(0);
   const [lastRetryError, setLastRetryError] = useState<string | null>(null);
