@@ -94,6 +94,7 @@ async function initializeRuntime(): Promise<FirebaseRuntime> {
 
   const auth = getAuth(app);
   await setPersistence(auth, browserLocalPersistence);
+  await auth.authStateReady();
 
   const credential = auth.currentUser
     ? { user: auth.currentUser }
