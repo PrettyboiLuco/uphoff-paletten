@@ -17,6 +17,12 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'webkit-compact-phone',
+      use: {
+        ...devices['iPhone 8'],
+      },
+    },
+    {
       name: 'webkit-small-phone',
       use: {
         ...devices['iPhone 13 Mini'],
