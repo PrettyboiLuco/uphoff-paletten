@@ -152,3 +152,30 @@ export function getFirebaseRuntime(): Promise<FirebaseRuntime> {
 export function resetFirebaseRuntimeForRetry(): void {
   runtimePromise = null;
 }
+
+
+export type DeviceEnrollmentState =
+  | 'ACTIVE'
+  | 'DISABLED'
+  | 'MISSING'
+  | 'UNKNOWN';
+
+export async function checkCurrentDeviceEnrollment(): Promise<DeviceEnrollmentState> {
+  const app = createApp();
+  if (!app) return 'UNKNOWN';
+
+  const auth = getAuth(app);
+  await auth.authStateReady();
+  const uid = auth.currentUser?.uid;
+  if (!uid) return 'UNKNOWN';
+
+  const db = firestoreForApp(app);
+
+  try {
+    const device = await getDoc(doc(db, 'devices', uid));
+    if (!device.exists()) return 'MISSING';
+    return device.data().enabled === true ? 'ACTIVE' : 'DISABLED';
+  } catch {
+    return 'UNKNOWN';
+  }
+}
