@@ -23,6 +23,7 @@ import { FirestoreRemoteEventStore } from './firestoreRemoteStore';
 export type FirebaseRuntimeStatus =
   | 'NOT_CONFIGURED'
   | 'AWAITING_APPROVAL'
+  | 'DISABLED'
   | 'ACTIVE';
 
 export interface FirebaseRuntime {
@@ -105,13 +106,23 @@ async function initializeRuntime(): Promise<FirebaseRuntime> {
 
   try {
     const device = await getDoc(doc(db, 'devices', uid));
-    if (!device.exists() || device.data().enabled !== true) {
+    if (!device.exists()) {
       return {
         status: 'AWAITING_APPROVAL',
         uid,
         db,
         appCheckEnabled: Boolean(appCheckKey),
-        reason: 'device-not-enabled',
+        reason: 'device-not-enrolled',
+      };
+    }
+
+    if (device.data().enabled !== true) {
+      return {
+        status: 'DISABLED',
+        uid,
+        db,
+        appCheckEnabled: Boolean(appCheckKey),
+        reason: 'device-disabled',
       };
     }
   } catch {
