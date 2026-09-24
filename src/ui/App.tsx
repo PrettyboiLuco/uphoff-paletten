@@ -268,7 +268,15 @@ export function App() {
 
         if (runtime.status === 'AWAITING_APPROVAL') {
           setBackendState('AWAITING_APPROVAL');
-          setBookingReady(Boolean(runtime.uid));
+          const approved = await controller.db.meta.get(
+            'approvedDeviceUid',
+          );
+          setBookingReady(
+            Boolean(
+              runtime.uid
+              && approved?.value === runtime.uid,
+            ),
+          );
           return;
         }
 
@@ -276,6 +284,11 @@ export function App() {
           setBackendState('ERROR');
           return;
         }
+
+        await controller.db.meta.put({
+          key: 'approvedDeviceUid',
+          value: runtime.uid,
+        });
 
         const incompatiblePending = await controller.db.events
           .filter(
@@ -286,6 +299,7 @@ export function App() {
           .count();
 
         if (incompatiblePending > 0) {
+          setBookingReady(false);
           setBackendState('ERROR');
           setError(
             `${incompatiblePending} lokale Buchung(en) stammen von einer anderen Geräte-ID und werden nicht still umgeschrieben. Bitte im Datenbereich prüfen.`,
