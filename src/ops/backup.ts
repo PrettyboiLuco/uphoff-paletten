@@ -179,11 +179,17 @@ export async function createJsonBackup(
   db: UphoffLocalDb,
   exportedAt: string,
 ): Promise<string> {
-  const [events, outbox, conflicts] = await Promise.all([
-    db.events.toArray(),
-    db.outbox.toArray(),
-    db.conflicts.toArray(),
-  ]);
+  const { events, outbox, conflicts } = await db.transaction(
+    'r',
+    db.events,
+    db.outbox,
+    db.conflicts,
+    async () => ({
+      events: await db.events.toArray(),
+      outbox: await db.outbox.toArray(),
+      conflicts: await db.conflicts.toArray(),
+    }),
+  );
 
   const backup: BackupPackage = {
     manifest: {
