@@ -21,11 +21,17 @@ export function modeLabel(mode: CountMode): string {
 }
 
 export function syncLabel(
-  state: 'SYNCHRON' | 'PENDING' | 'REJECTED' | 'NEVER_SYNCED',
+  state:
+    | 'SYNCHRON'
+    | 'PENDING'
+    | 'REJECTED'
+    | 'NEVER_SYNCED'
+    | 'STALE',
   pendingCount: number,
 ): string {
   if (state === 'SYNCHRON') return 'Synchron';
   if (state === 'PENDING') return `${pendingCount} ausstehend`;
   if (state === 'REJECTED') return 'Prüfung nötig';
+  if (state === 'STALE') return 'Abgleich veraltet';
   return 'Noch nicht synchronisiert';
 }
