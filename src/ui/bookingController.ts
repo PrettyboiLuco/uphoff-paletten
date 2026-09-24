@@ -148,6 +148,66 @@ export class LocalBookingController {
     return task;
   }
 
+  adminAdjustment(
+    art: 'ANFANGSBESTAND' | 'INVENTUR',
+    pallet: PalletTypeConfig,
+    delta: number,
+  ): Promise<{
+    event: StoredEvent;
+    projection: Awaited<ReturnType<typeof loadProjection>>;
+  }> {
+    if (!Number.isInteger(delta) || delta === 0) {
+      return Promise.reject(new Error('invalid-admin-delta'));
+    }
+    if (art === 'ANFANGSBESTAND' && delta < 0) {
+      return Promise.reject(new Error('invalid-initial-stock'));
+    }
+
+    const tappedAt = new Date();
+    const id =
+      art === 'ANFANGSBESTAND'
+        ? `anfang_${pallet.id}`
+        : crypto.randomUUID();
+
+    const execute = async () => {
+      const event: StoredEvent = {
+        id,
+        geraetId: this.deviceId,
+        sorte: pallet.id,
+        art,
+        delta,
+        buchungszeit: tappedAt.toISOString(),
+        konfigVersion: 'v1',
+        vorgangId: `admin_${id}`,
+        syncState: 'LOCAL_ONLY',
+        createdLocalAt: tappedAt.toISOString(),
+      };
+
+      const result = await persistAndQueueEvent(
+        this.db,
+        event,
+        tappedAt.getTime(),
+      );
+      if (result.status !== 'QUEUED') {
+        throw new Error(
+          art === 'ANFANGSBESTAND'
+            ? 'initial-stock-already-exists'
+            : `admin-adjustment-not-queued:${result.status}`,
+        );
+      }
+
+      this.activeProcess = null;
+      return {
+        event: result.event,
+        projection: await loadProjection(this.db),
+      };
+    };
+
+    const task = this.queue.then(execute, execute);
+    this.queue = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
   undoProcess(
     processId: string,
   ): Promise<{ projection: Awaited<ReturnType<typeof loadProjection>>; correctedCount: number }> {
