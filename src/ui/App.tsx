@@ -737,10 +737,15 @@ export function App() {
           </div>
 
           <div className="pallet-list">
-            {PALLET_TYPES.map((type) => (
+            {PALLET_TYPES.map((type) => {
+              const stock = stocks[type.id] ?? 0;
+              const negative = stock < 0;
+
+              return (
               <article
-                className={`pallet-row ${(stocks[type.id] ?? 0) < 0 ? 'negative-stock' : ''}`}
+                className={`pallet-row ${negative ? 'negative' : ''}`}
                 key={type.id}
+                data-negative={negative ? 'true' : 'false'}
               >
                 <div className="type-accent" />
                 <div className="type-copy">
