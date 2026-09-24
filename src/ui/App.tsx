@@ -425,7 +425,7 @@ export function App() {
           return;
         }
 
-        if (!runtime.remote || !runtime.uid) {
+        if (!runtime.remote || !runtime.uid || !runtime.db) {
           setBackendState('ERROR');
           return;
         }
