@@ -177,7 +177,7 @@ export class LocalBookingController {
         art,
         delta,
         buchungszeit: tappedAt.toISOString(),
-        konfigVersion: 'v1',
+        konfigVersion: PALLET_CONFIG_VERSION,
         vorgangId: `admin_${id}`,
         syncState: 'LOCAL_ONLY',
         createdLocalAt: tappedAt.toISOString(),
