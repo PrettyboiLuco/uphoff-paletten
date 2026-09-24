@@ -29,3 +29,10 @@ export const PALLET_CONFIG_READY = (
       && !/^Sorte\s+\d+$/i.test(type.name.trim()),
   )
 );
+
+export const PALLET_CONFIG_SIGNATURE = JSON.stringify({
+  version: PALLET_CONFIG_VERSION,
+  stackSizes: Object.fromEntries(
+    PALLET_TYPES.map((type) => [type.id, type.stackSize]),
+  ),
+});
