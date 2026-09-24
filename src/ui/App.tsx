@@ -54,6 +54,7 @@ interface LastAction {
   delta: number;
   mode: CountMode;
   processId: string;
+  warning: 'NONE' | 'ZERO_NET' | 'WRONG_SIGN';
 }
 
 const emptyStats: PeriodStatistics = {
@@ -526,12 +527,17 @@ export function App() {
     setError(null);
 
     try {
-      const { event, processId } = await controller.book(mode, pallet, action);
+      const {
+        event,
+        processId,
+        operationWarning,
+      } = await controller.book(mode, pallet, action);
       setLastAction({
         palletName: pallet.name,
         delta: event.delta,
         mode,
         processId,
+        warning: operationWarning,
       });
 
       await refreshLocalState(controller);
@@ -723,7 +729,10 @@ export function App() {
 
           <div className="pallet-list">
             {PALLET_TYPES.map((type) => (
-              <article className="pallet-row" key={type.id}>
+              <article
+                className={`pallet-row ${(stocks[type.id] ?? 0) < 0 ? 'negative-stock' : ''}`}
+                key={type.id}
+              >
                 <div className="type-accent" />
                 <div className="type-copy">
                   <strong>{type.name}</strong>
@@ -772,14 +781,14 @@ export function App() {
           </div>
 
           <div
-            className="last-action"
+            className={`last-action ${lastAction?.warning !== 'NONE' ? 'warning' : ''}`}
             style={blockStyle('LAST_ACTION')}
           >
             <div>
               <span>LETZTER VORGANG</span>
               <strong>
                 {lastAction
-                  ? `${lastAction.palletName} · ${lastAction.mode} · ${lastAction.delta > 0 ? '+' : ''}${lastAction.delta}`
+                  ? `${lastAction.palletName} · ${lastAction.mode} · ${lastAction.delta > 0 ? '+' : ''}${lastAction.delta}${lastAction.warning === 'ZERO_NET' ? ' · NETTO 0 PRÜFEN' : lastAction.warning === 'WRONG_SIGN' ? ' · VORZEICHEN PRÜFEN' : ''}`
                   : 'Noch keine Buchung'}
               </strong>
             </div>
