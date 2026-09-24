@@ -31,6 +31,7 @@ import {
   checkCurrentDeviceEnrollment,
   getFirebaseRuntime,
 } from '../sync/firebaseRuntime';
+import { validateServerPalletConfig } from '../sync/configValidation';
 import { getSyncHealth } from '../sync/health';
 import { runFullSync, startRealtimeSync } from '../sync/reconcile';
 import { runSyncPass } from '../sync/syncEngine';
@@ -431,9 +432,41 @@ export function App() {
         }
 
         remoteRef.current = runtime.remote;
-        const palletConfigUsable = PALLET_CONFIG_READY || allowLocalOnly;
+
+        let palletConfigUsable = PALLET_CONFIG_READY || allowLocalOnly;
+
+        if (PALLET_CONFIG_READY && !allowLocalOnly && runtime.db) {
+          const validation = await validateServerPalletConfig(runtime.db);
+
+          if (validation.status === 'MATCH') {
+            await controller.db.meta.put({
+              key: 'validatedPalletConfigSignature',
+              value: validation.signature,
+            });
+          } else if (validation.status === 'UNAVAILABLE') {
+            const previousValidation = await controller.db.meta.get(
+              'validatedPalletConfigSignature',
+            );
+            palletConfigUsable =
+              previousValidation?.value === validation.signature;
+
+            if (!palletConfigUsable) {
+              setError(
+                'Die Server-Konfiguration der Palettensorten konnte noch nie erfolgreich bestätigt werden. Neue Buchungen bleiben bis zur Prüfung gesperrt.',
+              );
+            }
+          } else {
+            palletConfigUsable = false;
+            setError(
+              validation.status === 'MISSING'
+                ? 'Die passende Server-Konfiguration für diese App-Version fehlt. Neue Buchungen sind gesperrt.'
+                : 'Die Stapelgrößen dieser App stimmen nicht mit der Server-Konfiguration überein. Neue Buchungen sind gesperrt.',
+            );
+          }
+        }
+
         setBookingReady(palletConfigUsable);
-        if (!palletConfigUsable) {
+        if (!palletConfigUsable && !PALLET_CONFIG_READY) {
           setError(
             'Die sieben echten Palettensorten und Stapelgrößen sind noch nicht final konfiguriert. Synchronisierung bleibt aktiv, neue Buchungen sind gesperrt.',
           );
