@@ -223,9 +223,22 @@ export function App() {
       if (!remote) return;
 
       try {
-        await runSyncPass(controller.db, remote, Date.now());
+        const result = await runSyncPass(
+          controller.db,
+          remote,
+          Date.now(),
+        );
+
+        if (result.rejected > 0 && navigator.onLine) {
+          await verifyDeviceStillAllowed(controller);
+        }
       } catch (caught) {
-        setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
+        const enrollment = navigator.onLine
+          ? await verifyDeviceStillAllowed(controller)
+          : null;
+        if (enrollment !== false) {
+          setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
+        }
         await recordSyncError(controller, 'SYNC_PUSH_FAILED', caught);
       } finally {
         await refreshLocalState(controller);
@@ -244,16 +257,35 @@ export function App() {
 
       try {
         const now = new Date();
-        await runFullSync(
+        const result = await runFullSync(
           controller.db,
           remote,
           now.getTime(),
           now.toISOString(),
         );
-        setBackendState(navigator.onLine ? 'ACTIVE' : 'OFFLINE');
+
+        const enrollment =
+          result.push.rejected > 0 && navigator.onLine
+            ? await verifyDeviceStillAllowed(controller)
+            : true;
+
+        if (enrollment !== false) {
+          setBackendState(
+            navigator.onLine ? 'ACTIVE' : 'OFFLINE',
+          );
+        }
       } catch (caught) {
-        setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
-        await recordSyncError(controller, 'SYNC_RECONCILE_FAILED', caught);
+        const enrollment = navigator.onLine
+          ? await verifyDeviceStillAllowed(controller)
+          : null;
+        if (enrollment !== false) {
+          setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
+        }
+        await recordSyncError(
+          controller,
+          'SYNC_RECONCILE_FAILED',
+          caught,
+        );
       } finally {
         await refreshLocalState(controller);
       }
