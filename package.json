@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:e22": "vitest run tests/outbox.test.ts",
     "test:e23": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run tests/firestore.rules.test.ts\"",
-    "test:e24": "vitest run tests/multiclient.test.ts",
+    "test:e24": "vitest run tests/multiclient.test.ts tests/health.test.ts",
     "test:e1": "vitest run tests/domain.test.ts",
     "test:e3": "vitest run tests/statistics.test.ts tests/aggregates.test.ts",
     "dev": "vite",
@@ -25,7 +25,7 @@
     "test:e6-browser": "playwright test tests/browser/ops.spec.ts",
     "test:e7-adapter": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run tests/firestore.adapter.test.ts\"",
     "test:e7-pwa": "playwright test --config=playwright.release.config.ts",
-    "test:release-unit": "vitest run tests/domain.test.ts tests/persistence.test.ts tests/outbox.test.ts tests/multiclient.test.ts tests/statistics.test.ts tests/aggregates.test.ts tests/ui-logic.test.ts tests/layout.test.ts tests/ops.test.ts"
+    "test:release-unit": "vitest run tests/domain.test.ts tests/persistence.test.ts tests/outbox.test.ts tests/multiclient.test.ts tests/health.test.ts tests/statistics.test.ts tests/aggregates.test.ts tests/ui-logic.test.ts tests/layout.test.ts tests/ops.test.ts"
   },
   "dependencies": {
     "dexie": "^4.2.0",
