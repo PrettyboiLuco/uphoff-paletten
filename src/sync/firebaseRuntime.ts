@@ -37,6 +37,27 @@ export interface FirebaseRuntime {
 
 let runtimePromise: Promise<FirebaseRuntime> | null = null;
 let appCheckInitialized = false;
+const RUNTIME_TIMEOUT_MS = 8_000;
+
+async function withRuntimeTimeout<T>(
+  promise: Promise<T>,
+): Promise<T> {
+  let timer: ReturnType<typeof globalThis.setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = globalThis.setTimeout(() => {
+          reject(new Error('firebase-runtime-timeout'));
+        }, RUNTIME_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) globalThis.clearTimeout(timer);
+  }
+}
+
 
 function env(name: string): string | undefined {
   const value = import.meta.env[name] as string | undefined;
@@ -99,13 +120,15 @@ async function initializeRuntime(): Promise<FirebaseRuntime> {
 
   const credential = auth.currentUser
     ? { user: auth.currentUser }
-    : await signInAnonymously(auth);
+    : await withRuntimeTimeout(signInAnonymously(auth));
 
   const uid = credential.user.uid;
   const db = firestoreForApp(app);
 
   try {
-    const device = await getDoc(doc(db, 'devices', uid));
+    const device = await withRuntimeTimeout(
+      getDoc(doc(db, 'devices', uid)),
+    );
     if (!device.exists()) {
       return {
         status: 'AWAITING_APPROVAL',
@@ -172,7 +195,9 @@ export async function checkCurrentDeviceEnrollment(): Promise<DeviceEnrollmentSt
   const db = firestoreForApp(app);
 
   try {
-    const device = await getDoc(doc(db, 'devices', uid));
+    const device = await withRuntimeTimeout(
+      getDoc(doc(db, 'devices', uid)),
+    );
     if (!device.exists()) return 'MISSING';
     return device.data().enabled === true ? 'ACTIVE' : 'DISABLED';
   } catch {
