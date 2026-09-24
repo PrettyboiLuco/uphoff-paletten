@@ -424,12 +424,23 @@ export function App() {
           runtime.remote,
           () => new Date().toISOString(),
           (caught) => {
-            setBackendState(navigator.onLine ? 'ERROR' : 'OFFLINE');
-            void recordSyncError(
-              controller,
-              'REALTIME_LISTENER_FAILED',
-              caught,
-            );
+            void (async () => {
+              const enrollment = navigator.onLine
+                ? await verifyDeviceStillAllowed(controller)
+                : null;
+
+              if (enrollment !== false) {
+                setBackendState(
+                  navigator.onLine ? 'ERROR' : 'OFFLINE',
+                );
+              }
+
+              await recordSyncError(
+                controller,
+                'REALTIME_LISTENER_FAILED',
+                caught,
+              );
+            })();
           },
           async () => {
             await refreshLocalState(controller);
