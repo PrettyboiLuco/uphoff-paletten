@@ -1,5 +1,5 @@
 import type { StoredEvent } from '../domain/types';
-import { correctionId } from '../domain/projection';
+import { assessOperation, correctionId } from '../domain/projection';
 import { loadProjection, UphoffLocalDb } from '../persistence/localDb';
 import {
   persistAndQueueEvent,
@@ -85,6 +85,7 @@ export class LocalBookingController {
     event: StoredEvent;
     projection: Awaited<ReturnType<typeof loadProjection>>;
     processId: string;
+    operationWarning: 'NONE' | 'ZERO_NET' | 'WRONG_SIGN';
   }> {
     const tappedAt = new Date();
     const eventId = crypto.randomUUID();
@@ -118,8 +119,28 @@ export class LocalBookingController {
         throw new Error(`booking-not-queued:${result.status}`);
       }
 
+      const processEvents = await this.db.events
+        .where('vorgangId')
+        .equals(processId)
+        .filter(
+          (candidate) =>
+            candidate.art !== 'KORREKTUR'
+            && candidate.syncState !== 'REJECTED',
+        )
+        .toArray();
+
+      const assessment = assessOperation(
+        mode,
+        processEvents.map((candidate) => candidate.delta),
+      );
+
       const projection = await loadProjection(this.db);
-      return { event: result.event, projection, processId };
+      return {
+        event: result.event,
+        projection,
+        processId,
+        operationWarning: assessment.warning,
+      };
     };
 
     const task = this.queue.then(execute, execute);
