@@ -230,6 +230,56 @@ describe('E2.3 Firestore security rules', () => {
     );
   });
 
+
+  it('allows exactly one deterministic positive initial-stock event per sort', async () => {
+    const adminDb = env.authenticatedContext('ipad-admin').firestore();
+
+    await assertSucceeds(
+      setDoc(
+        doc(adminDb, 'events/anfang_EURO'),
+        eventData('ipad-admin', {
+          id: 'anfang_EURO',
+          art: 'ANFANGSBESTAND',
+          delta: 100,
+        }),
+      ),
+    );
+
+    await assertFails(
+      setDoc(
+        doc(adminDb, 'events/wrong-initial-id'),
+        eventData('ipad-admin', {
+          id: 'wrong-initial-id',
+          art: 'ANFANGSBESTAND',
+          delta: 100,
+        }),
+      ),
+    );
+
+    await assertFails(
+      setDoc(
+        doc(adminDb, 'events/anfang_EINWEG'),
+        eventData('ipad-admin', {
+          id: 'anfang_EINWEG',
+          sorte: 'EINWEG',
+          art: 'ANFANGSBESTAND',
+          delta: 0,
+        }),
+      ),
+    );
+
+    await assertFails(
+      setDoc(
+        doc(adminDb, 'events/anfang_EURO'),
+        eventData('ipad-admin', {
+          id: 'anfang_EURO',
+          art: 'ANFANGSBESTAND',
+          delta: 120,
+        }),
+      ),
+    );
+  });
+
   it('accepts an old valid configVersion after a newer version exists', async () => {
     const db = env.authenticatedContext('iphone-user').firestore();
 
