@@ -41,6 +41,7 @@ type BackendState =
   | 'INITIALIZING'
   | 'NOT_CONFIGURED'
   | 'AWAITING_APPROVAL'
+  | 'DISABLED'
   | 'ACTIVE'
   | 'OFFLINE'
   | 'ERROR';
@@ -285,6 +286,15 @@ export function App() {
           return;
         }
 
+        if (runtime.status === 'DISABLED') {
+          setBackendState('DISABLED');
+          setBookingReady(false);
+          setError(
+            'Dieses Gerät wurde gesperrt. Neue Buchungen sind bis zur erneuten Freigabe deaktiviert.',
+          );
+          return;
+        }
+
         if (!runtime.remote || !runtime.uid) {
           setBackendState('ERROR');
           return;
@@ -499,6 +509,7 @@ export function App() {
         ? `Freigabe nötig · ${pendingCount} ausstehend`
         : 'Gerät freigeben';
     }
+    if (backendState === 'DISABLED') return 'Gerät gesperrt';
     if (backendState === 'OFFLINE') {
       return pendingCount > 0 ? `Offline · ${pendingCount} ausstehend` : 'Offline';
     }
@@ -577,7 +588,10 @@ export function App() {
         </div>
       )}
 
-      {!bookingReady && backendState !== 'NOT_CONFIGURED' && (
+      {!bookingReady
+        && backendState !== 'NOT_CONFIGURED'
+        && backendState !== 'DISABLED'
+        && (
         <div className="cloud-banner" role="status">
           Buchungen werden freigegeben, sobald die Geräte-ID sicher feststeht.
         </div>
