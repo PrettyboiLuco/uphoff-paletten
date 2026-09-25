@@ -9,8 +9,6 @@ on:
   push:
     branches:
       - build/pwa-v1
-    paths:
-      - .github/workflows/e7-release.yml
 
 jobs:
   release:
