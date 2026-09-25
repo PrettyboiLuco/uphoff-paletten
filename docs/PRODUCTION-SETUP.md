@@ -60,8 +60,10 @@ Die App verwendet zwei Ebenen:
 Beim Start wird außerdem die Storage Persistence API angefragt, sofern der Browser sie anbietet. Ein fehlendes Persistenz-Versprechen ist kein Datenverlustsignal, sondern ein Grund, Cloud-Sync und externe Backups zwingend beizubehalten.
 
 ## 6. Hosting / Installation
-- Produktionsbuild mit `npm run build`.
-- HTTPS-Hosting verwenden.
+- Im Firebase-Projekt Firebase Hosting aktivieren. `firebase.json` liefert `dist/` aus, leitet App-Routen an `index.html` weiter und hält `index.html` sowie `sw.js` aktualisierbar.
+- Die Produktionswerte der `VITE_...` Variablen nur in der lokalen Build-Umgebung setzen, nicht ins öffentliche Repository committen. Die Firebase-Web-Konfiguration wird im Browser-Bundle sichtbar; die Zugriffskontrolle muss über Auth, Security Rules und App Check funktionieren.
+- Vor dem Deploy `npm ci && npm run typecheck && npm run build` ausführen. Dann gezielt `npx firebase deploy --only firestore:rules,hosting --project <PROJECT_ID>` ausführen. Die Projekt-ID durch das eigene Firebase-Projekt ersetzen; niemals versehentlich das Testprojekt `uphoff-paletten-test` verwenden.
+- HTTPS-Hosting verwenden. Ein grüner CI-Lauf veröffentlicht die App nicht automatisch.
 - Auf iPhone/iPad über Safari öffnen und zum Home-Bildschirm hinzufügen.
 - Für den Hofbetrieb ausschließlich die installierte Home-Screen-PWA verwenden.
 - Nach jeder neuen Version zuerst auf einem Testgerät prüfen, dann produktive Geräte aktualisieren.
