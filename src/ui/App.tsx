@@ -1126,7 +1126,7 @@ export function App() {
           </div>
 
           <div
-            className={`last-action ${lastAction?.warning !== 'NONE' ? 'warning' : ''}`}
+            className={`last-action ${lastAction && lastAction.warning !== 'NONE' ? 'warning' : ''}`}
             style={blockStyle('LAST_ACTION')}
           >
             <div>
