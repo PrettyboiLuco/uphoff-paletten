@@ -80,12 +80,23 @@ test('seven pallet rows exist and every booking control has a large hit area', a
   const rows = page.locator('.pallet-row');
   await expect(rows).toHaveCount(7);
 
-  for (const button of await page.locator('.pallet-row button').all()) {
+  for (const button of await page.locator('.pallet-row .stack-button, .pallet-row .adjust-button').all()) {
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(60);
     expect(box!.height).toBeGreaterThanOrEqual(60);
   }
+});
+
+test('pallet details show a real image slot and confirmed stack size without booking', async ({ page }) => {
+  await page.getByRole('button', { name: 'Europaletten ansehen' }).click();
+  const detail = page.getByRole('dialog', { name: 'Europaletten ansehen' });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByRole('img', { name: /Europaletten/ })).toBeVisible();
+  await expect(detail).toContainText('Paletten je Stapel');
+  await expect(detail.locator('.pallet-detail-numbers strong').last()).toHaveText('15');
+  await detail.getByRole('button', { name: 'Palettendetails schließen' }).click();
+  await expect(page.locator('.pallet-row').first().locator('.row-stock strong')).toHaveText('0');
 });
 
 test('main tabs switch without page reload', async ({ page }) => {
@@ -172,37 +183,29 @@ test('horizontal swipe changes main page without triggering booking controls', a
   await expect(page.locator('.stat-hero')).toBeVisible();
 });
 
-test('all critical count controls are physically visible inside the portrait viewport', async ({ page }) => {
-  const viewport = page.viewportSize();
-  expect(viewport).not.toBeNull();
-
-  for (const locator of [
-    page.locator('.pallet-row').last(),
-    page.locator('.last-action'),
-    page.locator('.bottom-nav'),
-  ]) {
-    const box = await locator.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
-  }
+test('last booking and undo remain reachable above fixed navigation', async ({ page }) => {
+  await page.locator('.app-shell').evaluate((shell) => {
+    shell.scrollTop = shell.scrollHeight;
+  });
+  const action = await page.locator('.last-action').boundingBox();
+  const nav = await page.locator('.bottom-nav').boundingBox();
+  expect(action).not.toBeNull();
+  expect(nav).not.toBeNull();
+  expect(action!.y).toBeGreaterThanOrEqual(0);
+  expect(action!.y + action!.height).toBeLessThanOrEqual(nav!.y - 2);
 });
 
-test('statistics content is physically visible inside the portrait viewport', async ({ page }) => {
+test('all statistics content can be scrolled above fixed navigation', async ({ page }) => {
   await page.getByRole('button', { name: 'STATISTIK' }).click();
-  const viewport = page.viewportSize();
-  expect(viewport).not.toBeNull();
-
-  for (const locator of [
-    page.locator('.stat-hero'),
-    page.locator('.bar-chart'),
-    page.locator('.bottom-nav'),
-  ]) {
-    const box = await locator.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
-  }
+  await page.locator('.app-shell').evaluate((shell) => {
+    shell.scrollTop = shell.scrollHeight;
+  });
+  const strip = await page.locator('.stock-strip').boundingBox();
+  const nav = await page.locator('.bottom-nav').boundingBox();
+  expect(strip).not.toBeNull();
+  expect(nav).not.toBeNull();
+  expect(strip!.y).toBeGreaterThanOrEqual(0);
+  expect(strip!.y + strip!.height).toBeLessThanOrEqual(nav!.y - 2);
 });
 
 test('landscape state blocks counting with an explicit portrait instruction', async ({ page }) => {

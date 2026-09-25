@@ -7,7 +7,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   webServer: {
-    command: 'VITE_ALLOW_LOCAL_ONLY=true npm run build && npm run preview -- --host 127.0.0.1 --port 4173',
+    command: 'VITE_ALLOW_LOCAL_ONLY=true VITE_FIREBASE_API_KEY= VITE_FIREBASE_AUTH_DOMAIN= VITE_FIREBASE_PROJECT_ID= VITE_FIREBASE_APP_ID= VITE_RECAPTCHA_ENTERPRISE_SITE_KEY= npm run build && npm run preview -- --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
     timeout: 120_000,

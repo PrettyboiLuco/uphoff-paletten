@@ -70,7 +70,7 @@ test('offline booking survives an offline page reload from the production servic
   await expect(page.locator('.sync-pill')).toContainText('1 ausstehend');
 });
 
-test('production app has no horizontal overflow and critical controls remain in the viewport', async ({ page }) => {
+test('production app has no horizontal overflow and the last controls remain reachable', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.app-shell')).toHaveAttribute('data-layout-ready', 'true');
 
@@ -82,12 +82,14 @@ test('production app has no horizontal overflow and critical controls remain in 
   const viewport = page.viewportSize();
   expect(viewport).not.toBeNull();
 
-  for (const locator of [
-    page.locator('.pallet-row').last(),
-    page.locator('.bottom-nav'),
-  ]) {
-    const box = await locator.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
-  }
+  await page.locator('.app-shell').evaluate((shell) => {
+    shell.scrollTop = shell.scrollHeight;
+  });
+  const action = await page.locator('.last-action').boundingBox();
+  const nav = await page.locator('.bottom-nav').boundingBox();
+  expect(action).not.toBeNull();
+  expect(nav).not.toBeNull();
+  expect(action!.y).toBeGreaterThanOrEqual(0);
+  expect(action!.y + action!.height).toBeLessThan(nav!.y);
+  expect(nav!.y + nav!.height).toBeLessThanOrEqual(viewport!.height);
 });

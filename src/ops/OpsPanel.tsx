@@ -69,6 +69,7 @@ export function OpsPanel({
 }: Props) {
   const [health, setHealth] = useState<DeviceHealthSnapshot | null>(null);
   const [backupDue, setBackupDue] = useState(true);
+  const [backupDownloaded, setBackupDownloaded] = useState(false);
   const [errors, setErrors] = useState<OperationalError[]>([]);
   const [recentBookings, setRecentBookings] = useState<StoredEvent[]>([]);
   const [reportDate, setReportDate] = useState(defaultReportDate);
@@ -119,8 +120,8 @@ export function OpsPanel({
         json,
         'application/json',
       );
-      await markExternalBackupDone(db, now);
-      setMessage('JSON-Sicherung erstellt.');
+      setBackupDownloaded(true);
+      setMessage('JSON-Datei erstellt. Bitte außerhalb dieses Geräts ablegen und danach bestätigen.');
       await refresh();
     } catch (error) {
       await logOperationalError(db, {
@@ -131,6 +132,17 @@ export function OpsPanel({
       });
       setMessage('Sicherung fehlgeschlagen.');
       await refresh();
+    }
+  };
+
+  const confirmExternalBackup = async () => {
+    try {
+      await markExternalBackupDone(db, new Date().toISOString());
+      setBackupDownloaded(false);
+      setMessage('Externe Sicherung als abgelegt bestätigt.');
+      await refresh();
+    } catch {
+      setMessage('Bestätigung konnte nicht gespeichert werden.');
     }
   };
 
@@ -333,6 +345,13 @@ export function OpsPanel({
             />
           </label>
         </div>
+
+        {backupDownloaded && (
+          <div className="backup-confirm">
+            <span>Die Datei ist erst gesichert, wenn sie an einem zweiten Ort liegt.</span>
+            <button onClick={() => void confirmExternalBackup()}>SICHERUNG ABGELEGT</button>
+          </div>
+        )}
 
         <div className="ops-report">
           <strong>TAGES- / WOCHEN-PDF</strong>

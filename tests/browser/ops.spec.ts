@@ -13,14 +13,16 @@ test('shows backup due and truthful local health counts', async ({ page }) => {
   await expect(page.locator('.health-grid')).toContainText('AUSSTEHEND');
 });
 
-test('JSON backup downloads and marks external backup current', async ({ page }) => {
+test('JSON download stays due until external storage is confirmed', async ({ page }) => {
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'JSON SICHERN' }).click();
   const download = await downloadPromise;
 
   expect(download.suggestedFilename()).toMatch(/^uphoff-paletten-backup-\d{4}-\d{2}-\d{2}\.json$/);
+  await expect(page.locator('.backup-state')).toContainText('EXTERNE SICHERUNG FÄLLIG');
+  await page.getByRole('button', { name: 'SICHERUNG ABGELEGT' }).click();
   await expect(page.locator('.backup-state')).toContainText('SICHERUNG AKTUELL');
-  await expect(page.getByRole('status')).toContainText('JSON-Sicherung erstellt');
+  await expect(page.getByRole('status')).toContainText('als abgelegt bestätigt');
 });
 
 test('CSV audit export downloads a readable audit file', async ({ page }) => {

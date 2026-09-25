@@ -39,7 +39,12 @@ import { runFullSync, startRealtimeSync } from '../sync/reconcile';
 import { runSyncPass } from '../sync/syncEngine';
 import type { RemoteRealtimeEventStore, RemoteUnsubscribe } from '../sync/types';
 import { LocalBookingController, type BookingAction } from './bookingController';
-import { PALLET_CONFIG_READY, PALLET_TYPES } from './config';
+import {
+  BRAND_IMAGE_URL,
+  PALLET_CONFIG_READY,
+  PALLET_FALLBACK_IMAGE_URL,
+  PALLET_TYPES,
+} from './config';
 import { syncLabel, type CountMode } from './logic';
 
 type Tab = 'COUNT' | 'STATS';
@@ -141,6 +146,7 @@ export function App() {
   const [layoutEditorOpen, setLayoutEditorOpen] = useState(false);
   const [layoutReady, setLayoutReady] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
+  const [selectedPalletId, setSelectedPalletId] = useState<string | null>(null);
   const allowLocalOnly =
     import.meta.env.DEV
     || import.meta.env.VITE_ALLOW_LOCAL_ONLY === 'true';
@@ -902,6 +908,17 @@ export function App() {
   };
 
   const outgoingChange = comparison.weggekommen.percentChange;
+  const selectedPallet = PALLET_TYPES.find((item) => item.id === selectedPalletId);
+
+  useEffect(() => {
+    if (!selectedPalletId) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedPalletId(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [selectedPalletId]);
+
   const outgoingComparisonText =
     outgoingChange === null
       ? 'Keine belastbare Vorperiode'
@@ -955,9 +972,7 @@ export function App() {
 
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            U
-          </span>
+          <img className="brand-mark" src={BRAND_IMAGE_URL} alt="" />
           <div>
             <strong>UPHOFF</strong>
             <span>PALETTENSERVICE</span>
@@ -1054,7 +1069,13 @@ export function App() {
               >
                 <div className="type-accent" />
                 <div className="type-copy">
-                  <strong>{type.name}</strong>
+                  <button
+                    className="type-detail-button"
+                    onClick={() => setSelectedPalletId(type.id)}
+                    aria-label={`${type.name} ansehen`}
+                  >
+                    {type.name}
+                  </button>
                   <span>
                     Stapel {type.stackSize} · Heute{' '}
                     {(todayStats.bySort[type.id]?.nettoBestandsaenderung ?? 0) > 0 ? '+' : ''}
@@ -1304,6 +1325,48 @@ export function App() {
             ))}
           </div>
         </section>
+      )}
+
+      {selectedPallet && (
+        <div
+          className="pallet-detail-backdrop"
+          onClick={() => setSelectedPalletId(null)}
+        >
+          <section
+            className="pallet-detail"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${selectedPallet.name} ansehen`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              className="pallet-detail-close"
+              autoFocus
+              aria-label="Palettendetails schließen"
+              onClick={() => setSelectedPalletId(null)}
+            >
+              ×
+            </button>
+            <img
+              key={selectedPallet.id}
+              src={selectedPallet.imageUrl ?? PALLET_FALLBACK_IMAGE_URL}
+              onError={(event) => {
+                if (event.currentTarget.src.endsWith(PALLET_FALLBACK_IMAGE_URL)) return;
+                event.currentTarget.src = PALLET_FALLBACK_IMAGE_URL;
+              }}
+              alt={`${selectedPallet.name}: Palettenansicht`}
+            />
+            <div className="pallet-detail-content">
+              <span>PALETTENSORTE</span>
+              <h2>{selectedPallet.name}</h2>
+              <div className="pallet-detail-numbers">
+                <p><span>Aktueller Bestand</span><strong>{stocks[selectedPallet.id] ?? 0}</strong></p>
+                <p><span>Paletten je Stapel</span><strong>{selectedPallet.stackSize}</strong></p>
+              </div>
+              <p>Zum Buchen die Tasten in der Zählübersicht verwenden.</p>
+            </div>
+          </section>
+        </div>
       )}
 
       {opsOpen && controllerRef.current && (

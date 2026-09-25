@@ -16,6 +16,7 @@ E6 macht Fehler sichtbar, prüft den Datenbestand reproduzierbar und ermöglicht
 8. Pending/Rejected/Conflict verhindern einen falschen grünen Gesamtstatus.
 9. Betriebsfehler werden lokal mit Zeitpunkt, Code, Schwere und Kontext protokolliert.
 10. Wöchentliche Sicherung ist bei geschlossener PWA nicht garantierbar. Die App prüft deshalb beim Start/Foreground, ob ein externer Backup-Export fällig ist.
+11. Der Download allein bestätigt keinen externen Sicherungsort. Erst die manuelle Bestätigung nach dem Ablegen der Datei aktualisiert die Fälligkeit.
 11. Lokales Backup allein ist kein Ersatz für eine zweite Kopie außerhalb des Geräts.
 12. Importierte Daten werden vor Commit validiert.
 

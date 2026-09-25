@@ -2,7 +2,13 @@ export interface PalletTypeConfig {
   id: string;
   name: string;
   stackSize: number;
+  /** Optional public photo; falls back to the bundled pallet illustration. */
+  imageUrl?: string;
 }
+
+// Replace this file with your own logo when artwork is available.
+export const BRAND_IMAGE_URL = '/images/uphoff-mark.svg';
+export const PALLET_FALLBACK_IMAGE_URL = '/images/pallet.svg';
 
 export const PALLET_CONFIG_VERSION = 'v1';
 
