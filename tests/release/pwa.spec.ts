@@ -43,7 +43,7 @@ test('installed shell reloads while fully offline after first online load', asyn
 
   await expect(page.getByText('UPHOFF')).toBeVisible();
   await expect(page.getByRole('button', { name: 'EINGANG' })).toBeVisible();
-  await expect(page.locator('.sync-pill')).toContainText('Nur lokal');
+  await expect(page.locator('.sync-pill')).toContainText('Offline');
 });
 
 test('offline booking survives an offline page reload from the production service worker', async ({ page, context }) => {
