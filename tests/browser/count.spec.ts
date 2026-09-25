@@ -50,7 +50,7 @@ test('negative inventory warns without blocking the booking', async ({ page }) =
   await row.locator('.adjust-button').first().click();
 
   await expect(row.locator('.row-stock strong')).toHaveText('-1');
-  await expect(row).toHaveClass(/negative-stock/);
+  await expect(row).toHaveAttribute('data-negative', 'true');
   await expect(page.locator('.last-action')).toContainText('VORZEICHEN PRÜFEN');
 });
 
