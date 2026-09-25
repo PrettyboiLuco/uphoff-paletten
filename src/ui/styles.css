@@ -1335,3 +1335,15 @@ button:disabled { opacity: .48; cursor: default; }
 .pallet-detail-numbers span { color: var(--muted); font-size: 11px; }
 .pallet-detail-numbers strong { font-size: 29px; font-variant-numeric: tabular-nums; }
 .pallet-detail-content > p { margin: 17px 0 0; color: #bbc7c0; font-size: 12px; line-height: 1.5; }
+
+.panel-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(8, 10, 12, .9);
+  color: var(--text);
+  font-size: 14px;
+}

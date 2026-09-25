@@ -1,11 +1,12 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { LayoutEditor } from '../layout/LayoutEditor';
 import {
   defaultLayout,
   profileForViewport,
@@ -15,7 +16,6 @@ import {
 } from '../layout/layout';
 import { loadLayout } from '../layout/storage';
 import { logOperationalError } from '../ops/errorLog';
-import { OpsPanel } from '../ops/OpsPanel';
 import { listEvents, loadProjection } from '../persistence/localDb';
 import { requestDurableStorage } from '../pwa/storageDurability';
 import {
@@ -90,6 +90,13 @@ const PERIODS: readonly { id: StatisticsPeriodKind; label: string }[] = [
   { id: 'SIX_MONTHS', label: '6 MONATE' },
   { id: 'ONE_YEAR', label: '1 JAHR' },
 ];
+
+const LayoutEditor = lazy(() => import('../layout/LayoutEditor').then((module) => ({
+  default: module.LayoutEditor,
+})));
+const OpsPanel = lazy(() => import('../ops/OpsPanel').then((module) => ({
+  default: module.OpsPanel,
+})));
 
 export function App() {
   const controllerRef = useRef<LocalBookingController | null>(null);
@@ -1370,32 +1377,36 @@ export function App() {
       )}
 
       {opsOpen && controllerRef.current && (
-        <OpsPanel
-          db={controllerRef.current.db}
-          remote={remoteRef.current}
-          deviceId={backendUid}
-          isAdmin={backendRole === 'ADMIN'}
-          onSetPhysicalStock={setPhysicalStock}
-          onClose={() => setOpsOpen(false)}
-          onDataChanged={async () => {
-            const controller = controllerRef.current;
-            if (!controller) return;
-            await refreshLocalState(controller);
-            await pushPending(controller);
-          }}
-        />
+        <Suspense fallback={<div className="panel-loading" role="status">Daten werden geöffnet …</div>}>
+          <OpsPanel
+            db={controllerRef.current.db}
+            remote={remoteRef.current}
+            deviceId={backendUid}
+            isAdmin={backendRole === 'ADMIN'}
+            onSetPhysicalStock={setPhysicalStock}
+            onClose={() => setOpsOpen(false)}
+            onDataChanged={async () => {
+              const controller = controllerRef.current;
+              if (!controller) return;
+              await refreshLocalState(controller);
+              await pushPending(controller);
+            }}
+          />
+        </Suspense>
       )}
 
       {layoutEditorOpen && controllerRef.current && (
-        <LayoutEditor
-          db={controllerRef.current.db}
-          profile={layoutProfile}
-          onSaved={(nextLayout) => {
-            setLayout(nextLayout);
-            setLayoutReady(true);
-          }}
-          onClose={() => setLayoutEditorOpen(false)}
-        />
+        <Suspense fallback={<div className="panel-loading" role="status">Layout wird geöffnet …</div>}>
+          <LayoutEditor
+            db={controllerRef.current.db}
+            profile={layoutProfile}
+            onSaved={(nextLayout) => {
+              setLayout(nextLayout);
+              setLayoutReady(true);
+            }}
+            onClose={() => setLayoutEditorOpen(false)}
+          />
+        </Suspense>
       )}
 
       <nav className="bottom-nav" aria-label="Hauptnavigation">
