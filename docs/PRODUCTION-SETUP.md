@@ -1,6 +1,14 @@
 # Produktions-Setup – UPHOFF Paletten PWA
 
-Stand: 2026-09-23
+Stand: 2026-09-25
+
+## Aktueller Einrichtungsstand
+- Projekt `uphoff-paletten` auf dem kostenlosen Spark-Tarif angelegt; Web-App „Uphoff Paletten PWA“ registriert.
+- Firestore `(default)` in `europe-west3` (Frankfurt) im Produktionsmodus angelegt. Die getesteten Regeln aus `firestore.rules` sind veröffentlicht.
+- Authentication: anonyme Anmeldung aktiviert, automatische Bereinigung deaktiviert.
+- `configs/v1` enthält alle sieben bestätigten Stapelgrößen.
+- Hosting-Domain `https://uphoff-paletten.web.app` ist reserviert. Die App wurde noch **nicht** bereitgestellt.
+- Offen: App Check, Hosting-Deployment, Gerätefreigaben, Anfangsbestände, Backup-Ziel und Gerätetests.
 
 ## 1. Firebase-Projekt
 1. Firebase-Projekt anlegen.
@@ -8,7 +16,7 @@ Stand: 2026-09-23
 3. Firestore-Datenbank aktivieren.
 4. Authentication -> Sign-in method -> **Anonymous** aktivieren. Für diese gerätegebundenen IDs **keine automatische Bereinigung alter anonymer Konten aktivieren**, solange diese IDs als dauerhafte Gerätefreigabe verwendet werden.
 5. Firestore Security Rules aus `firestore.rules` deployen.
-6. Web-App-Konfiguration in die fünf `VITE_...` Variablen der Hosting-Umgebung eintragen.
+6. Web-App-Konfiguration in die vier `VITE_FIREBASE_...` Variablen der lokalen Produktions-Build-Umgebung eintragen.
 7. `VITE_ALLOW_LOCAL_ONLY` in Produktion **nicht** auf `true` setzen. Ohne Cloud-Konfiguration sperrt die Produktions-App neue Buchungen bewusst, damit kein einzelnes Gerät zur einzigen Datenkopie wird.
 
 ## 2. App Check
@@ -62,7 +70,7 @@ Beim Start wird außerdem die Storage Persistence API angefragt, sofern der Brow
 ## 6. Hosting / Installation
 - Im Firebase-Projekt Firebase Hosting aktivieren. `firebase.json` liefert `dist/` aus, leitet App-Routen an `index.html` weiter und hält `index.html` sowie `sw.js` aktualisierbar.
 - Die Produktionswerte der `VITE_...` Variablen nur in der lokalen Build-Umgebung setzen, nicht ins öffentliche Repository committen. Die Firebase-Web-Konfiguration wird im Browser-Bundle sichtbar; die Zugriffskontrolle muss über Auth, Security Rules und App Check funktionieren.
-- Vor dem Deploy `npm ci && npm run typecheck && npm run build` ausführen. Dann gezielt `npx firebase deploy --only firestore:rules,hosting --project <PROJECT_ID>` ausführen. Die Projekt-ID durch das eigene Firebase-Projekt ersetzen; niemals versehentlich das Testprojekt `uphoff-paletten-test` verwenden.
+- Vor dem Deploy `npm ci && npm run typecheck && npm run build` ausführen. Dann gezielt `npx firebase deploy --only firestore:rules,hosting --project uphoff-paletten` ausführen; niemals versehentlich das Testprojekt `uphoff-paletten-test` verwenden.
 - HTTPS-Hosting verwenden. Ein grüner CI-Lauf veröffentlicht die App nicht automatisch.
 - Auf iPhone/iPad über Safari öffnen und zum Home-Bildschirm hinzufügen.
 - Für den Hofbetrieb ausschließlich die installierte Home-Screen-PWA verwenden.
