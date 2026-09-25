@@ -6,6 +6,7 @@ import {
 } from '../persistence/localDb';
 import type { OutboxItem } from '../sync/types';
 import type { BackupPackage } from './types';
+import { PALLET_TYPES } from '../ui/config';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -180,14 +181,17 @@ function validateBackup(value: unknown): {
       throw new Error('pending-event-without-outbox-in-backup');
     }
 
+    const stack = PALLET_TYPES.find((type) => type.id === event.sorte)?.stackSize;
+    // Accept old v1 backups that used 15/17 before the real sort sizes were supplied.
+    const allowedDeltas = [1, -1, 15, -15, 17, -17, stack, stack === undefined ? undefined : -stack];
     if (event.art === 'ZUGANG') {
-      if (![1, -1, 15, 17].includes(event.delta)) {
+      if (!allowedDeltas.includes(event.delta)) {
         throw new Error('invalid-zugang-delta-in-backup');
       }
     }
 
     if (event.art === 'ABGANG') {
-      if (![-1, 1, -15, -17].includes(event.delta)) {
+      if (!allowedDeltas.includes(event.delta)) {
         throw new Error('invalid-abgang-delta-in-backup');
       }
     }

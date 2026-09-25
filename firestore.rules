@@ -252,11 +252,11 @@ service cloud.firestore {
         )
         && (
           request.resource.data.stapel['typ-4'] == 15
-          || request.resource.data.stapel['typ-4'] == 17
+          || request.resource.data.stapel['typ-4'] == 18
         )
         && (
           request.resource.data.stapel['typ-5'] == 15
-          || request.resource.data.stapel['typ-5'] == 17
+          || request.resource.data.stapel['typ-5'] == 25
         )
         && (
           request.resource.data.stapel['typ-6'] == 15

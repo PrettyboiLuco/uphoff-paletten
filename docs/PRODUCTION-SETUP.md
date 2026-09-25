@@ -42,15 +42,15 @@ Beispiel:
     "typ-1": 15,
     "typ-2": 15,
     "typ-3": 15,
-    "typ-4": 15,
-    "typ-5": 17,
+    "typ-4": 18,
+    "typ-5": 25,
     "typ-6": 17,
     "typ-7": 17
   }
 }
 ```
 
-Die sieben Namen in `src/ui/config.ts` wurden von Luc geliefert: Europaletten, Euroersatzpaletten, CP, Einweg, Schachtelt, Nutra und 1200x1000. Die derzeitigen Stapelgrößen 15/17 im Code und oben im Beispiel sind **nur Testwerte**, noch keine Betriebsangaben. Nach Lucs Freigabe alle sieben Größen in der App und in `configs/v1` angleichen; bei anderen Größen als 15/17 zusätzlich die zulässigen Werte in `firestore.rules` anpassen. Erst danach `PALLET_STACK_SIZES_APPROVED` und `PALLET_CONFIG_APPROVED` auf `true` setzen. Bis dahin sperrt der Produktionsbuild Buchungen bewusst.
+Die Namen und sechs Stapelgrößen wurden von Luc bestätigt: Europaletten 15, Euroersatzpaletten 15, CP 15, Einweg 18, Schachtelt 25, Nutra 17. **1200x1000 = 17 ist nur ein Platzhalter**, diese Größe fehlt noch. Anfangsbestände folgen später. Vor dem Produktivstart die fehlende Größe in App, `configs/v1` und `firestore.rules` angleichen und erst danach `PALLET_STACK_SIZES_APPROVED` und `PALLET_CONFIG_APPROVED` auf `true` setzen. Bis dahin sperrt der Produktionsbuild Buchungen bewusst.
 
 ## 5. Lokale Persistenz
 Die App verwendet zwei Ebenen:
