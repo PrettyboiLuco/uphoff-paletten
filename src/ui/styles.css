@@ -716,6 +716,42 @@ button:disabled { opacity: .48; cursor: default; }
   pointer-events: none;
 }
 
+.ops-report,
+.ops-setup {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px;
+  display: grid;
+  gap: 9px;
+  background: var(--panel);
+}
+.ops-report > strong,
+.ops-setup > strong { font-size: 9px; letter-spacing: .1em; }
+.ops-report > label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; }
+.ops-report input {
+  min-height: 42px;
+  color: #fff;
+  color-scheme: dark;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px;
+  background: #161a20;
+}
+.ops-report > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.ops-report button { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.05); font-size: 10px; font-weight: 750; }
+.ops-report button:disabled { opacity: .4; }
+.ops-report > span,
+.ops-setup small { color: var(--muted); font-size: 9px; line-height: 1.5; }
+.ops-setup > span { font-size: 10px; line-height: 1.4; }
+.booking-history-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.booking-history-row strong { font-size: 10px; }
+.booking-history-row span { color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+
 .ops-message {
   border: 1px solid var(--line);
   border-radius: 10px;

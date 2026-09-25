@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { StoredEvent } from '../domain/types';
 import { loadProjection, type UphoffLocalDb } from '../persistence/localDb';
 import {
   createCsvAudit,
@@ -9,10 +10,15 @@ import {
   type RestoreResult,
 } from './backup';
 import { logOperationalError, recentOperationalErrors } from './errorLog';
+import { createPeriodPdf, defaultReportDate, type ReportKind } from './report';
 import { localHealthSnapshot, runServerSelfTest, type SelfTestResult } from './selfTest';
 import type { RemoteReadableEventStore } from '../sync/types';
 import type { DeviceHealthSnapshot, OperationalError } from './types';
-import { PALLET_TYPES } from '../ui/config';
+import {
+  PALLET_CONFIG_READY,
+  PALLET_STACK_SIZES_APPROVED,
+  PALLET_TYPES,
+} from '../ui/config';
 
 interface Props {
   db: UphoffLocalDb;
@@ -40,6 +46,18 @@ function downloadText(filename: string, text: string, type: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+function downloadPdf(filename: string, bytes: Uint8Array): void {
+  const data = new Uint8Array(bytes);
+  const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export function OpsPanel({
   db,
   remote,
@@ -52,6 +70,8 @@ export function OpsPanel({
   const [health, setHealth] = useState<DeviceHealthSnapshot | null>(null);
   const [backupDue, setBackupDue] = useState(true);
   const [errors, setErrors] = useState<OperationalError[]>([]);
+  const [recentBookings, setRecentBookings] = useState<StoredEvent[]>([]);
+  const [reportDate, setReportDate] = useState(defaultReportDate);
   const [message, setMessage] = useState<string | null>(null);
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
   const [serverTest, setServerTest] = useState<SelfTestResult | null>(null);
@@ -66,16 +86,21 @@ export function OpsPanel({
 
   const refresh = async () => {
     const now = new Date().toISOString();
-    const [nextHealth, due, recent, projection] = await Promise.all([
+    const [nextHealth, due, recent, projection, events] = await Promise.all([
       localHealthSnapshot(db, now),
       isExternalBackupDue(db, now),
       recentOperationalErrors(db, 10),
       loadProjection(db),
+      db.events.toArray(),
     ]);
     setHealth(nextHealth);
     setBackupDue(due);
     setErrors(recent);
     setStocks(projection.bestandJeSorte);
+    setRecentBookings(events.sort((a, b) =>
+      Date.parse(b.buchungszeit) - Date.parse(a.buchungszeit)
+      || b.id.localeCompare(a.id),
+    ).slice(0, 30));
   };
 
   useEffect(() => {
@@ -128,6 +153,25 @@ export function OpsPanel({
         occurredAt: new Date().toISOString(),
       });
       setMessage('CSV-Export fehlgeschlagen.');
+      await refresh();
+    }
+  };
+
+  const exportPdf = async (kind: ReportKind) => {
+    setMessage(null);
+    try {
+      const events = await db.events.toArray();
+      const pdf = await createPeriodPdf(events, kind, reportDate);
+      downloadPdf(`uphoff-paletten-${kind === 'DAY' ? 'tag' : 'woche'}-${reportDate}.pdf`, pdf);
+      setMessage(`${kind === 'DAY' ? 'Tages' : 'Wochen'}-PDF erstellt.`);
+    } catch (error) {
+      await logOperationalError(db, {
+        code: 'PDF_EXPORT_FAILED',
+        severity: 'ERROR',
+        message: error instanceof Error ? error.message : 'unknown-pdf-error',
+        occurredAt: new Date().toISOString(),
+      });
+      setMessage('PDF-Export fehlgeschlagen.');
       await refresh();
     }
   };
@@ -290,6 +334,34 @@ export function OpsPanel({
           </label>
         </div>
 
+        <div className="ops-report">
+          <strong>TAGES- / WOCHEN-PDF</strong>
+          <label>
+            Datum wählen
+            <input
+              type="date"
+              aria-label="Berichtsdatum"
+              value={reportDate}
+              onChange={(event) => setReportDate(event.target.value)}
+            />
+          </label>
+          <div>
+            <button disabled={!reportDate} onClick={() => void exportPdf('DAY')}>TAGES-PDF</button>
+            <button disabled={!reportDate} onClick={() => void exportPdf('WEEK')}>WOCHEN-PDF</button>
+          </div>
+          <span>Enthält Bestandsbewegung und Buchungsprotokoll mit Gerätekennung und Sync-Status.</span>
+        </div>
+
+        <div className="ops-setup">
+          <strong>EINRICHTUNGSCHECK</strong>
+          <span>{PALLET_STACK_SIZES_APPROVED && PALLET_CONFIG_READY ? '✓' : '○'} Feste Stapelgrößen freigegeben</span>
+          <span>{remote ? '✓' : '○'} Freigegebenes Gerät mit Server verbunden</span>
+          <span>{health && health.pendingCount === 0 && health.rejectedCount === 0 ? '✓' : '○'} Keine ausstehenden oder abgelehnten Buchungen</span>
+          <span>{serverTest?.status === 'MATCH' ? '✓' : '○'} Server-Prüfcode abgeglichen</span>
+          <span>{!backupDue ? '✓' : '○'} Externes Backup aktuell</span>
+          <small>Gerätetests und Inventur müssen zusätzlich vor Ort abgenommen werden.</small>
+        </div>
+
         {message && <div className="ops-message" role="status">{message}</div>}
 
         {restoreResult && (
@@ -395,6 +467,28 @@ export function OpsPanel({
             <span>
               Ergebnis: {serverTest.status} · lokal {serverTest.local.eventCount} · Server {serverTest.remoteEventCount}
             </span>
+          )}
+        </div>
+
+        <div className="error-list">
+          <div className="error-list-title">LETZTE 30 BUCHUNGEN</div>
+          {recentBookings.length === 0 ? (
+            <span className="no-errors">Noch keine Buchungen vorhanden.</span>
+          ) : (
+            recentBookings.map((booking) => (
+              <div className="booking-history-row" key={booking.id}>
+                <strong>
+                  {PALLET_TYPES.find((type) => type.id === booking.sorte)?.name ?? booking.sorte}
+                  {' · '}{booking.art} {' '}
+                  {booking.delta > 0 ? '+' : ''}{booking.delta}
+                </strong>
+                <span>
+                  {new Date(booking.buchungszeit).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}
+                  {' · Gerät: '}{booking.geraetId}
+                  {' · '}{booking.syncState}
+                </span>
+              </div>
+            ))
           )}
         </div>
 
