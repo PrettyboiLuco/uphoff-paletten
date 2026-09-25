@@ -455,7 +455,10 @@ describe('E2.4 multi-client convergence and fault injection', () => {
       '2026-09-23T10:00:01Z',
     );
 
-    const healthy = await getSyncHealth(phone);
+    const healthy = await getSyncHealth(
+      phone,
+      Date.parse('2026-09-23T10:00:01Z'),
+    );
     expect(healthy.state).toBe('SYNCHRON');
     expect(healthy.pendingCount).toBe(0);
     expect(healthy.rejectedCount).toBe(0);
