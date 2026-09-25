@@ -50,7 +50,7 @@ Beispiel:
 }
 ```
 
-Die echten sieben Sortennamen und Stapelgrößen müssen vor Rollout in `src/ui/config.ts` und in der serverseitigen Konfiguration übereinstimmen. Solange Namen wie `Sorte 1` bis `Sorte 7` noch Platzhalter sind, sperrt der Produktionsbuild neue Buchungen bewusst.
+Die sieben Namen in `src/ui/config.ts` wurden von Luc geliefert: Europaletten, Euroersatzpaletten, CP, Einweg, Schachtelt, Nutra und 1200x1000. Die derzeitigen Stapelgrößen 15/17 im Code und oben im Beispiel sind **nur Testwerte**, noch keine Betriebsangaben. Nach Lucs Freigabe alle sieben Größen in der App und in `configs/v1` angleichen; bei anderen Größen als 15/17 zusätzlich die zulässigen Werte in `firestore.rules` anpassen. Erst danach `PALLET_STACK_SIZES_APPROVED` und `PALLET_CONFIG_APPROVED` auf `true` setzen. Bis dahin sperrt der Produktionsbuild Buchungen bewusst.
 
 ## 5. Lokale Persistenz
 Die App verwendet zwei Ebenen:
