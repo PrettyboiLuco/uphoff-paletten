@@ -6,10 +6,10 @@ export interface PalletTypeConfig {
 
 export const PALLET_CONFIG_VERSION = 'v1';
 
-// Production stays locked until the size for 1200x1000 and the server setup
-// have been confirmed. Its displayed size 17 is a development placeholder.
-export const PALLET_CONFIG_APPROVED = false;
-export const PALLET_STACK_SIZES_APPROVED = false;
+// All seven sizes are confirmed. Production still requires a matching server
+// config and an explicitly approved device before bookings can be made.
+export const PALLET_CONFIG_APPROVED = true;
+export const PALLET_STACK_SIZES_APPROVED = true;
 
 export const PALLET_TYPES: readonly PalletTypeConfig[] = [
   { id: 'typ-1', name: 'Europaletten', stackSize: 15 },

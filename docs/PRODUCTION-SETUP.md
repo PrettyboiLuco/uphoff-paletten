@@ -50,7 +50,7 @@ Beispiel:
 }
 ```
 
-Die Namen und sechs Stapelgrößen wurden von Luc bestätigt: Europaletten 15, Euroersatzpaletten 15, CP 15, Einweg 18, Schachtelt 25, Nutra 17. **1200x1000 = 17 ist nur ein Platzhalter**, diese Größe fehlt noch. Anfangsbestände folgen später. Vor dem Produktivstart die fehlende Größe in App, `configs/v1` und `firestore.rules` angleichen und erst danach `PALLET_STACK_SIZES_APPROVED` und `PALLET_CONFIG_APPROVED` auf `true` setzen. Bis dahin sperrt der Produktionsbuild Buchungen bewusst.
+Die Namen und alle sieben Stapelgrößen wurden von Luc bestätigt: Europaletten 15, Euroersatzpaletten 15, CP 15, Einweg 18, Schachtelt 25, Nutra 17 und 1200x1000 17. Die beiden Freigabeschalter für die Sortenkonfiguration stehen deshalb auf `true`. Für echte Buchungen braucht die App weiterhin ein eingerichtetes Firebase-Projekt, das passende Dokument `configs/v1` und ein freigegebenes Gerät. Anfangsbestände und Praxistest vor Ort folgen später.
 
 ## 5. Lokale Persistenz
 Die App verwendet zwei Ebenen:
