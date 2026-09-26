@@ -33,6 +33,30 @@ service cloud.firestore {
       return get(configPath(version)).data.stapel.keys().hasAny([sorte]);
     }
 
+    function stockPath(sorte) {
+      return /databases/$(database)/documents/stocks/$(sorte);
+    }
+
+    function stockControlPath() {
+      return /databases/$(database)/documents/system/stockControl;
+    }
+
+    function stockReady() {
+      return exists(stockControlPath())
+        && get(stockControlPath()).data.phase == 'ACTIVE';
+    }
+
+    function validStockMovement(eventId) {
+      let before = get(stockPath(request.resource.data.sorte)).data;
+      let after = getAfter(stockPath(request.resource.data.sorte)).data;
+      return exists(stockPath(request.resource.data.sorte))
+        && after.count is int
+        && after.count >= 0
+        && after.count == before.count + request.resource.data.delta
+        && after.lastEventId == eventId
+        && after.updatedAt == request.time;
+    }
+
     function allowedEventKeys() {
       return [
         'id',
@@ -206,7 +230,9 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if isActiveDevice();
       allow create: if isActiveDevice()
+        && stockReady()
         && commonEventValid(eventId)
+        && validStockMovement(eventId)
         && (
           validZugang()
           || validAbgang()
@@ -215,6 +241,33 @@ service cloud.firestore {
           || validTransfer(eventId)
         );
       allow update, delete: if false;
+    }
+
+    match /stocks/{sort} {
+      allow read: if isActiveDevice();
+      allow create, delete: if false;
+      allow update: if isActiveDevice()
+        && stockReady()
+        && resource.data.keys().hasAll(['count', 'lastEventId', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['count', 'lastEventId', 'updatedAt'])
+        && request.resource.data.keys().hasAll(['count', 'lastEventId', 'updatedAt'])
+        && request.resource.data.count is int
+        && request.resource.data.count >= 0
+        && request.resource.data.lastEventId is string
+        && request.resource.data.lastEventId.size() > 0
+        && request.resource.data.lastEventId.size() <= 128
+        && request.resource.data.updatedAt == request.time
+        && !exists(originalPath(request.resource.data.lastEventId))
+        && existsAfter(originalPath(request.resource.data.lastEventId))
+        && getAfter(originalPath(request.resource.data.lastEventId)).data.sorte == sort
+        && getAfter(originalPath(request.resource.data.lastEventId)).data.geraetId == request.auth.uid
+        && getAfter(originalPath(request.resource.data.lastEventId)).data.delta
+          == request.resource.data.count - resource.data.count;
+    }
+
+    match /system/{documentId} {
+      allow read: if isActiveDevice();
+      allow write: if false;
     }
 
     function validConfig() {

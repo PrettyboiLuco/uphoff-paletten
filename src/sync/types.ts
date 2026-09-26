@@ -19,7 +19,8 @@ export type RemoteCreateErrorCode =
   | 'PERMISSION_DENIED'
   | 'INVALID_ARGUMENT'
   | 'UNAUTHENTICATED'
-  | 'QUOTA_EXHAUSTED';
+  | 'QUOTA_EXHAUSTED'
+  | 'INSUFFICIENT_STOCK';
 
 export class RemoteCreateError extends Error {
   constructor(

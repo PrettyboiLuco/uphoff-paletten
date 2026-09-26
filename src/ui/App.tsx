@@ -80,9 +80,8 @@ const emptyComparison: PeriodComparison = {
   inventurdifferenz: { current: 0, previous: 0, percentChange: 0 },
 };
 
-const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined)?.trim()
-  || '0.1.0';
+declare const __UPHOFF_BUILD_VERSION__: string;
+const APP_VERSION = __UPHOFF_BUILD_VERSION__;
 
 const PERIODS: readonly { id: StatisticsPeriodKind; label: string }[] = [
   { id: 'TODAY', label: 'HEUTE' },
@@ -313,6 +312,13 @@ export function App() {
 
         if (result.rejected > 0 && navigator.onLine) {
           await verifyDeviceStillAllowed(controller);
+        }
+        if (result.rejected > 0) {
+          const lastRejected = await controller.db.events
+            .where('syncState').equals('REJECTED').toArray();
+          if (lastRejected.some((event) => event.rejectionReason === 'INSUFFICIENT_STOCK')) {
+            setError('Buchung zurückgenommen: Ein anderes Gerät hat den Bestand bereits verbucht. Der Bestand kann nicht unter 0 sinken.');
+          }
         }
       } catch (caught) {
         const enrollment = navigator.onLine
@@ -771,7 +777,7 @@ export function App() {
   ) => {
     const pallet = PALLET_TYPES.find((item) => item.id === palletId);
     const controller = controllerRef.current;
-    if (!pallet || !controller || pallet.stackSize !== stackSize) return;
+    if (!bookingReady || !pallet || !controller || pallet.stackSize !== stackSize) return;
 
     setError(null);
 
@@ -808,7 +814,7 @@ export function App() {
     const controller = controllerRef.current;
     const pallet = PALLET_TYPES.find((item) => item.id === palletId);
 
-    if (!controller || !pallet || backendRole !== 'ADMIN') {
+    if (!bookingReady || !controller || !pallet || backendRole !== 'ADMIN') {
       throw new Error('admin-required');
     }
     if (!Number.isInteger(targetStock) || targetStock < 0) {
@@ -856,7 +862,7 @@ export function App() {
 
   const undoLastProcess = async () => {
     const controller = controllerRef.current;
-    if (!controller || !lastAction) return;
+    if (!bookingReady || !controller || !lastAction) return;
 
     setError(null);
     try {
@@ -1153,7 +1159,7 @@ export function App() {
               </strong>
             </div>
             <button
-              disabled={!lastAction}
+              disabled={!bookingReady || !lastAction}
               onClick={() => void undoLastProcess()}
             >
               RÜCKGÄNGIG

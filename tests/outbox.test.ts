@@ -100,6 +100,21 @@ class DependencyRemote extends FakeRemote {
   }
 }
 
+class FloorRemote extends FakeRemote {
+  stock = 14;
+  readonly uploadOrder: string[] = [];
+
+  override async createEvent(event: PalletEvent): Promise<RemoteCreateResult> {
+    if (this.stock + event.delta < 0) {
+      throw new RemoteCreateError('INSUFFICIENT_STOCK', 'stock-below-zero');
+    }
+    const result = await super.createEvent(event);
+    this.stock += event.delta;
+    this.uploadOrder.push(event.id);
+    return result;
+  }
+}
+
 afterEach(async () => {
   for (const name of dbNames.splice(0)) {
     const db = new UphoffLocalDb(name);
@@ -108,6 +123,29 @@ afterEach(async () => {
 });
 
 describe('E2.2 outbox and retry', () => {
+  it('uploads stock-increasing corrections first when undoing a mixed operation', async () => {
+    const db = makeDb('e22-mixed-undo-floor');
+    const remote = new FloorRemote();
+    await db.events.bulkPut([
+      makeEvent({ id: 'stack', delta: 15, syncState: 'CONFIRMED' }),
+      makeEvent({ id: 'minus', delta: -1, art: 'ZUGANG', syncState: 'CONFIRMED' }),
+    ]);
+
+    await persistAndQueueEvent(db, makeEvent({
+      id: 'korr_stack', art: 'KORREKTUR', delta: -15, korrigiertId: 'stack',
+    }), 1000);
+    await persistAndQueueEvent(db, makeEvent({
+      id: 'korr_minus', art: 'KORREKTUR', delta: 1, korrigiertId: 'minus',
+    }), 1001);
+
+    const result = await runSyncPass(db, remote, 1001);
+    expect(result).toMatchObject({ confirmed: 2, rejected: 0 });
+    expect(remote.uploadOrder).toEqual(['korr_minus', 'korr_stack']);
+    expect(remote.stock).toBe(0);
+    expect(await db.outbox.count()).toBe(0);
+    await db.close();
+  });
+
   it('atomically persists the event and its outbox item', async () => {
     const db = makeDb('e22-atomic');
     const result = await persistAndQueueEvent(db, makeEvent(), 1000);
