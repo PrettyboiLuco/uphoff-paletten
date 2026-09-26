@@ -1,0 +1,338 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function devicePath(uid) {
+      return /databases/$(database)/documents/devices/$(uid);
+    }
+
+    function isActiveDevice() {
+      return request.auth != null
+        && exists(devicePath(request.auth.uid))
+        && get(devicePath(request.auth.uid)).data.enabled == true;
+    }
+
+    function isAdmin() {
+      return isActiveDevice()
+        && get(devicePath(request.auth.uid)).data.role == 'ADMIN';
+    }
+
+    function configPath(version) {
+      return /databases/$(database)/documents/configs/$(version);
+    }
+
+    function configExists(version) {
+      return exists(configPath(version));
+    }
+
+    function stackSize(version, sorte) {
+      return get(configPath(version)).data.stapel[sorte];
+    }
+
+    function configHasSort(version, sorte) {
+      return get(configPath(version)).data.stapel.keys().hasAny([sorte]);
+    }
+
+    function allowedEventKeys() {
+      return [
+        'id',
+        'geraetId',
+        'person',
+        'sorte',
+        'art',
+        'delta',
+        'buchungszeit',
+        'serverzeit',
+        'konfigVersion',
+        'vorgangId',
+        'korrigiertId',
+        'umbuchungId',
+        'umbuchungPartnerId'
+      ];
+    }
+
+    function optionalFieldsValid() {
+      return (!request.resource.data.keys().hasAny(['person'])
+          || (request.resource.data.person is string
+            && request.resource.data.person.size() > 0
+            && request.resource.data.person.size() <= 100))
+        && (!request.resource.data.keys().hasAny(['vorgangId'])
+          || (request.resource.data.vorgangId is string
+            && request.resource.data.vorgangId.size() > 0
+            && request.resource.data.vorgangId.size() <= 128))
+        && (!request.resource.data.keys().hasAny(['korrigiertId'])
+          || (request.resource.data.korrigiertId is string
+            && request.resource.data.korrigiertId.size() > 0
+            && request.resource.data.korrigiertId.size() <= 128))
+        && (!request.resource.data.keys().hasAny(['umbuchungId'])
+          || (request.resource.data.umbuchungId is string
+            && request.resource.data.umbuchungId.size() > 0
+            && request.resource.data.umbuchungId.size() <= 128))
+        && (!request.resource.data.keys().hasAny(['umbuchungPartnerId'])
+          || (request.resource.data.umbuchungPartnerId is string
+            && request.resource.data.umbuchungPartnerId.size() > 0
+            && request.resource.data.umbuchungPartnerId.size() <= 128));
+    }
+
+    function commonEventValid(eventId) {
+      return request.resource.data.keys().hasOnly(allowedEventKeys())
+        && request.resource.data.keys().hasAll([
+          'id',
+          'geraetId',
+          'sorte',
+          'art',
+          'delta',
+          'buchungszeit',
+          'serverzeit',
+          'konfigVersion'
+        ])
+        && request.resource.data.id == eventId
+        && eventId.size() > 0
+        && eventId.size() <= 128
+        && request.resource.data.geraetId == request.auth.uid
+        && request.resource.data.sorte is string
+        && request.resource.data.sorte.size() > 0
+        && request.resource.data.sorte.size() <= 64
+        && request.resource.data.art is string
+        && request.resource.data.delta is int
+        && request.resource.data.buchungszeit is timestamp
+        && request.resource.data.serverzeit is timestamp
+        && request.resource.data.serverzeit == request.time
+        && request.resource.data.buchungszeit <= request.time + duration.value(5, 'm')
+        && request.resource.data.konfigVersion is string
+        && request.resource.data.konfigVersion.size() > 0
+        && request.resource.data.konfigVersion.size() <= 64
+        && optionalFieldsValid()
+        && configExists(request.resource.data.konfigVersion)
+        && configHasSort(
+          request.resource.data.konfigVersion,
+          request.resource.data.sorte
+        );
+    }
+
+    function validZugang() {
+      let stack = stackSize(
+        request.resource.data.konfigVersion,
+        request.resource.data.sorte
+      );
+      return request.resource.data.art == 'ZUGANG'
+        && (
+          request.resource.data.delta == stack
+          || request.resource.data.delta == 1
+          || request.resource.data.delta == -1
+        );
+    }
+
+    function validAbgang() {
+      let stack = stackSize(
+        request.resource.data.konfigVersion,
+        request.resource.data.sorte
+      );
+      return request.resource.data.art == 'ABGANG'
+        && (
+          request.resource.data.delta == -stack
+          || request.resource.data.delta == -1
+          || request.resource.data.delta == 1
+        );
+    }
+
+    function originalPath(id) {
+      return /databases/$(database)/documents/events/$(id);
+    }
+
+    function validCorrection(eventId) {
+      let original = get(
+        originalPath(request.resource.data.korrigiertId)
+      ).data;
+      let normalOriginal = original.art == 'ZUGANG'
+        || original.art == 'ABGANG';
+      let adminOriginal = original.art == 'ANFANGSBESTAND'
+        || original.art == 'INVENTUR';
+
+      return request.resource.data.art == 'KORREKTUR'
+        && request.resource.data.keys().hasAll(['korrigiertId'])
+        && exists(originalPath(request.resource.data.korrigiertId))
+        && eventId == 'korr_' + request.resource.data.korrigiertId
+        && (normalOriginal || adminOriginal)
+        && (
+          (normalOriginal
+            && (
+              original.geraetId == request.auth.uid
+              || isAdmin()
+            ))
+          || (adminOriginal && isAdmin())
+        )
+        && request.resource.data.sorte == original.sorte
+        && request.resource.data.konfigVersion == original.konfigVersion
+        && request.resource.data.delta == -original.delta;
+    }
+
+    function validAdminAdjustment(eventId) {
+      return isAdmin()
+        && request.resource.data.delta != 0
+        && (
+          (
+            request.resource.data.art == 'ANFANGSBESTAND'
+            && request.resource.data.delta > 0
+            && eventId == 'anfang_' + request.resource.data.sorte
+          )
+          || request.resource.data.art == 'INVENTUR'
+        );
+    }
+
+    function transferPartnerPath() {
+      return /databases/$(database)/documents/events/$(request.resource.data.umbuchungPartnerId);
+    }
+
+    function validTransfer(eventId) {
+      let partner = getAfter(transferPartnerPath()).data;
+
+      return isAdmin()
+        && request.resource.data.art == 'UMBUCHUNG'
+        && request.resource.data.keys().hasAll(['umbuchungId', 'umbuchungPartnerId'])
+        && request.resource.data.umbuchungPartnerId != eventId
+        && request.resource.data.delta != 0
+        && existsAfter(transferPartnerPath())
+        && partner.art == 'UMBUCHUNG'
+        && partner.umbuchungId == request.resource.data.umbuchungId
+        && partner.umbuchungPartnerId == eventId
+        && partner.geraetId == request.auth.uid
+        && partner.sorte != request.resource.data.sorte
+        && partner.konfigVersion == request.resource.data.konfigVersion
+        && partner.buchungszeit == request.resource.data.buchungszeit
+        && partner.delta + request.resource.data.delta == 0;
+    }
+
+    match /events/{eventId} {
+      allow read: if isActiveDevice();
+      allow create: if isActiveDevice()
+        && commonEventValid(eventId)
+        && (
+          validZugang()
+          || validAbgang()
+          || validCorrection(eventId)
+          || validAdminAdjustment(eventId)
+          || validTransfer(eventId)
+        );
+      allow update, delete: if false;
+    }
+
+    function validConfig() {
+      return request.resource.data.keys().hasOnly(['stapel'])
+        && request.resource.data.stapel is map
+        && request.resource.data.stapel.keys().hasOnly([
+          'typ-1',
+          'typ-2',
+          'typ-3',
+          'typ-4',
+          'typ-5',
+          'typ-6',
+          'typ-7'
+        ])
+        && request.resource.data.stapel.keys().hasAll([
+          'typ-1',
+          'typ-2',
+          'typ-3',
+          'typ-4',
+          'typ-5',
+          'typ-6',
+          'typ-7'
+        ])
+        && (
+          request.resource.data.stapel['typ-1'] == 15
+          || request.resource.data.stapel['typ-1'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-2'] == 15
+          || request.resource.data.stapel['typ-2'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-3'] == 15
+          || request.resource.data.stapel['typ-3'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-4'] == 15
+          || request.resource.data.stapel['typ-4'] == 18
+        )
+        && (
+          request.resource.data.stapel['typ-5'] == 15
+          || request.resource.data.stapel['typ-5'] == 25
+        )
+        && (
+          request.resource.data.stapel['typ-6'] == 15
+          || request.resource.data.stapel['typ-6'] == 17
+        )
+        && (
+          request.resource.data.stapel['typ-7'] == 15
+          || request.resource.data.stapel['typ-7'] == 17
+        );
+    }
+
+    match /configs/{version} {
+      allow read: if isActiveDevice();
+      allow create: if isAdmin() && validConfig();
+      allow update, delete: if false;
+    }
+
+    function validHeartbeat(uid) {
+      return request.resource.data.keys().hasOnly([
+          'uid',
+          'lastSeen',
+          'pendingCount',
+          'rejectedCount',
+          'eventCount',
+          'appVersion',
+          'syncState',
+          'checkCodeJson'
+        ])
+        && request.resource.data.keys().hasAll([
+          'uid',
+          'lastSeen',
+          'pendingCount',
+          'rejectedCount',
+          'eventCount',
+          'appVersion',
+          'syncState',
+          'checkCodeJson'
+        ])
+        && request.resource.data.uid == uid
+        && uid == request.auth.uid
+        && request.resource.data.lastSeen is timestamp
+        && request.resource.data.lastSeen == request.time
+        && request.resource.data.pendingCount is int
+        && request.resource.data.pendingCount >= 0
+        && request.resource.data.rejectedCount is int
+        && request.resource.data.rejectedCount >= 0
+        && request.resource.data.eventCount is int
+        && request.resource.data.eventCount >= 0
+        && request.resource.data.appVersion is string
+        && request.resource.data.appVersion.size() > 0
+        && request.resource.data.appVersion.size() <= 32
+        && request.resource.data.syncState is string
+        && request.resource.data.syncState in [
+          'SYNCHRON',
+          'PENDING',
+          'REJECTED',
+          'NEVER_SYNCED',
+          'STALE'
+        ]
+        && request.resource.data.checkCodeJson is string
+        && request.resource.data.checkCodeJson.size() <= 4096;
+    }
+
+    match /heartbeats/{uid} {
+      allow read: if isActiveDevice()
+        && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isActiveDevice()
+        && validHeartbeat(uid);
+      allow delete: if false;
+    }
+
+    match /devices/{uid} {
+      allow read: if request.auth != null
+        && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+  }
+}
