@@ -11,13 +11,34 @@ import {
   doc,
   getDoc,
   serverTimestamp,
-  setDoc,
+  setDoc as firestoreSetDoc,
   Timestamp,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
+
+// Successful event writes must carry the matching counter change in one batch.
+async function setDoc(ref: ReturnType<typeof doc>, data: Record<string, unknown>) {
+  if (ref.parent.id !== 'events' || typeof data.sorte !== 'string'
+    || !['EURO', 'EINWEG'].includes(data.sorte)
+    || typeof data.delta !== 'number') {
+    return firestoreSetDoc(ref, data);
+  }
+  const stock = doc(ref.firestore, 'stocks', data.sorte);
+  let before;
+  try { before = await getDoc(stock); } catch { return firestoreSetDoc(ref, data); }
+  if (!before.exists()) return firestoreSetDoc(ref, data);
+  const batch = writeBatch(ref.firestore);
+  batch.update(stock, {
+    count: before.data().count + data.delta,
+    lastEventId: ref.id,
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(ref, data);
+  return batch.commit();
+}
 
 const projectId = 'uphoff-paletten-test';
 
@@ -52,6 +73,13 @@ async function seedBase() {
         EINWEG: 17,
       },
     });
+    await firestoreSetDoc(doc(db, 'stocks/EURO'), {
+      count: 100, lastEventId: 'bootstrap', updatedAt: Timestamp.now(),
+    });
+    await firestoreSetDoc(doc(db, 'stocks/EINWEG'), {
+      count: 100, lastEventId: 'bootstrap', updatedAt: Timestamp.now(),
+    });
+    await firestoreSetDoc(doc(db, 'system/stockControl'), { phase: 'ACTIVE' });
   });
 }
 
@@ -490,6 +518,12 @@ describe('E2.3 Firestore security rules', () => {
         umbuchungPartnerId: 'transfer-a',
       }),
     );
+    batch.update(doc(db, 'stocks/EURO'), {
+      count: 90, lastEventId: 'transfer-a', updatedAt: serverTimestamp(),
+    });
+    batch.update(doc(db, 'stocks/EINWEG'), {
+      count: 110, lastEventId: 'transfer-b', updatedAt: serverTimestamp(),
+    });
 
     await assertSucceeds(batch.commit());
 

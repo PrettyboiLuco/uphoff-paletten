@@ -80,9 +80,8 @@ const emptyComparison: PeriodComparison = {
   inventurdifferenz: { current: 0, previous: 0, percentChange: 0 },
 };
 
-const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined)?.trim()
-  || '0.1.0';
+declare const __UPHOFF_BUILD_VERSION__: string;
+const APP_VERSION = __UPHOFF_BUILD_VERSION__;
 
 const PERIODS: readonly { id: StatisticsPeriodKind; label: string }[] = [
   { id: 'TODAY', label: 'HEUTE' },
@@ -118,6 +117,8 @@ export function App() {
     | 'STALE'
   >('NEVER_SYNCED');
   const [pendingCount, setPendingCount] = useState(0);
+  const [rejectedCount, setRejectedCount] = useState(0);
+  const [rejectedSummary, setRejectedSummary] = useState<string | null>(null);
   const [lastRetryError, setLastRetryError] = useState<string | null>(null);
   const [backendState, setBackendState] = useState<BackendState>('INITIALIZING');
   const [backendUid, setBackendUid] = useState<string | null>(null);
@@ -179,13 +180,23 @@ export function App() {
   };
 
   const refreshLocalState = async (controller: LocalBookingController) => {
-    const [projection, health] = await Promise.all([
+    const [projection, health, rejected] = await Promise.all([
       loadProjection(controller.db),
       getSyncHealth(controller.db),
+      controller.db.events.where('syncState').equals('REJECTED').toArray(),
     ]);
 
     setStocks(projection.bestandJeSorte);
     setPendingCount(health.pendingCount);
+    setRejectedCount(health.rejectedCount);
+    const latestRejection = rejected.sort((a, b) =>
+      b.createdLocalAt.localeCompare(a.createdLocalAt))[0];
+    const rejectedSort = PALLET_TYPES.find((item) => item.id === latestRejection?.sorte);
+    setRejectedSummary(latestRejection
+      ? `${rejectedSort?.name ?? latestRejection.sorte} ${latestRejection.delta > 0 ? '+' : ''}${latestRejection.delta}: ${latestRejection.rejectionReason === 'INSUFFICIENT_STOCK'
+        ? 'nicht übernommen, weil der Cloud-Bestand dafür nicht ausreichte.'
+        : 'vom Server nicht übernommen. Details unter DATEN prüfen.'}`
+      : null);
     setSyncState(health.state);
     setLastRetryError(health.lastRetryError ?? null);
     await refreshStatistics(controller);
@@ -771,7 +782,7 @@ export function App() {
   ) => {
     const pallet = PALLET_TYPES.find((item) => item.id === palletId);
     const controller = controllerRef.current;
-    if (!pallet || !controller || pallet.stackSize !== stackSize) return;
+    if (!bookingReady || !pallet || !controller || pallet.stackSize !== stackSize) return;
 
     setError(null);
 
@@ -808,7 +819,7 @@ export function App() {
     const controller = controllerRef.current;
     const pallet = PALLET_TYPES.find((item) => item.id === palletId);
 
-    if (!controller || !pallet || backendRole !== 'ADMIN') {
+    if (!bookingReady || !controller || !pallet || backendRole !== 'ADMIN') {
       throw new Error('admin-required');
     }
     if (!Number.isInteger(targetStock) || targetStock < 0) {
@@ -856,7 +867,7 @@ export function App() {
 
   const undoLastProcess = async () => {
     const controller = controllerRef.current;
-    if (!controller || !lastAction) return;
+    if (!bookingReady || !controller || !lastAction) return;
 
     setError(null);
     try {
@@ -956,6 +967,7 @@ export function App() {
       return pendingCount > 0 ? `Offline · ${pendingCount} ausstehend` : 'Offline';
     }
     if (backendState === 'ERROR') return 'Sync prüfen';
+    if (rejectedCount > 0) return `${rejectedCount} abgelehnt`;
     return syncLabel(syncState, pendingCount);
   })();
 
@@ -1039,6 +1051,13 @@ export function App() {
       {error && (
         <div className="error-banner" role="alert">
           {error}
+        </div>
+      )}
+
+      {rejectedSummary && (
+        <div className="error-banner rejection-banner" role="alert">
+          <span>{rejectedCount} Buchung{rejectedCount === 1 ? '' : 'en'} abgelehnt: {rejectedSummary}</span>
+          <button onClick={() => setOpsOpen(true)}>DATEN ÖFFNEN</button>
         </div>
       )}
 
@@ -1153,7 +1172,7 @@ export function App() {
               </strong>
             </div>
             <button
-              disabled={!lastAction}
+              disabled={!bookingReady || !lastAction}
               onClick={() => void undoLastProcess()}
             >
               RÜCKGÄNGIG

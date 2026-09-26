@@ -9,12 +9,13 @@
     "test:e21": "vitest run tests/persistence.test.ts",
     "typecheck": "tsc --noEmit",
     "test:e22": "vitest run tests/outbox.test.ts",
-    "test:e23": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run tests/firestore.rules.test.ts\"",
+    "test:e23": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run --no-file-parallelism tests/firestore.rules.test.ts tests/firestore.stock.test.ts tests/firestore.multidevice.test.ts\"",
     "test:e24": "vitest run tests/multiclient.test.ts tests/health.test.ts",
     "test:e1": "vitest run tests/domain.test.ts",
     "test:e3": "vitest run tests/statistics.test.ts tests/aggregates.test.ts",
     "dev": "vite",
     "build": "vite build",
+    "build:deploy": "node scripts/check-production-env.mjs && vite build",
     "preview": "vite preview",
     "test:e4-unit": "vitest run tests/ui-logic.test.ts",
     "test:e4": "vitest run tests/ui-logic.test.ts",
@@ -25,7 +26,7 @@
     "test:e6-browser": "playwright test tests/browser/ops.spec.ts",
     "test:e7-adapter": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run tests/firestore.adapter.test.ts\"",
     "test:e7-pwa": "playwright test --config=playwright.release.config.ts",
-    "test:release-unit": "vitest run tests/domain.test.ts tests/persistence.test.ts tests/outbox.test.ts tests/multiclient.test.ts tests/stock-floor.test.ts tests/health.test.ts tests/statistics.test.ts tests/aggregates.test.ts tests/ui-logic.test.ts tests/layout.test.ts tests/ops.test.ts tests/report.test.ts"
+    "test:release-unit": "vitest run tests/domain.test.ts tests/persistence.test.ts tests/outbox.test.ts tests/multiclient.test.ts tests/stock-floor.test.ts tests/stock-floor-preflight.test.ts tests/health.test.ts tests/statistics.test.ts tests/aggregates.test.ts tests/ui-logic.test.ts tests/layout.test.ts tests/ops.test.ts tests/report.test.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
@@ -42,6 +43,7 @@
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
     "fake-indexeddb": "^6.2.2",
+    "firebase-admin": "^13.10.0",
     "firebase-tools": "^14.16.0",
     "typescript": "^5.7.3",
     "vite": "^7.1.7",

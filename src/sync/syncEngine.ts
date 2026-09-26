@@ -67,6 +67,13 @@ export async function runSyncPass(
   enriched.sort((a, b) => {
     if (a.event.art === 'KORREKTUR' && b.event.art !== 'KORREKTUR') return 1;
     if (a.event.art !== 'KORREKTUR' && b.event.art === 'KORREKTUR') return -1;
+    // A single undo may reverse both a stack booking and its subsequent -1
+    // taps. Apply the stock-increasing corrections first: otherwise a valid
+    // undo can transiently cross zero and be permanently rejected by Firestore.
+    if (a.event.art === 'KORREKTUR' && b.event.art === 'KORREKTUR') {
+      if (a.event.delta > 0 && b.event.delta < 0) return -1;
+      if (a.event.delta < 0 && b.event.delta > 0) return 1;
+    }
     return a.item.nextAttemptAt - b.item.nextAttemptAt;
   });
 

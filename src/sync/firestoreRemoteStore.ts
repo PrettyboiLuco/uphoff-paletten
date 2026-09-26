@@ -8,8 +8,8 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
-  setDoc,
   startAt,
   Timestamp,
   type Firestore,
@@ -196,9 +196,35 @@ export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {
 
   async createEvent(event: PalletEvent): Promise<RemoteCreateResult> {
     const ref = doc(this.db, 'events', event.id);
+    const stockRef = doc(this.db, 'stocks', event.sorte);
 
     try {
-      await withTimeout(setDoc(ref, toFirestoreEvent(event)));
+      await withTimeout(runTransaction(this.db, async (transaction) => {
+        const [existing, stock] = await Promise.all([
+          transaction.get(ref),
+          transaction.get(stockRef),
+        ]);
+        if (existing.exists()) {
+          throw new RemoteCreateError('ALREADY_EXISTS', 'event-already-exists');
+        }
+        if (!stock.exists()) {
+          throw new RemoteCreateError('TRANSIENT', 'stock-migration-in-progress');
+        }
+        const current = stock.data().count;
+        if (typeof current !== 'number' || !Number.isSafeInteger(current)) {
+          throw new RemoteCreateError('INVALID_ARGUMENT', 'invalid-server-stock');
+        }
+        const next = current + event.delta;
+        if (next < 0) {
+          throw new RemoteCreateError('INSUFFICIENT_STOCK', 'insufficient-server-stock');
+        }
+        transaction.update(stockRef, {
+          count: next,
+          lastEventId: event.id,
+          updatedAt: serverTimestamp(),
+        });
+        transaction.set(ref, toFirestoreEvent(event));
+      }));
       return { status: 'CREATED' };
     } catch (error) {
       if (error instanceof RemoteCreateError) throw error;
@@ -208,6 +234,18 @@ export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {
           const existing = await withTimeout(getDoc(ref));
           if (existing.exists()) {
             throw new RemoteCreateError('ALREADY_EXISTS', 'event-already-exists');
+          }
+          const control = await withTimeout(getDoc(doc(this.db, 'system', 'stockControl')));
+          if (!control.exists() || control.data().phase !== 'ACTIVE') {
+            throw new RemoteCreateError('TRANSIENT', 'stock-migration-in-progress');
+          }
+          // A concurrent transaction may have consumed the last pallet between
+          // our read and commit; the emulator can report this as permission-denied.
+          const latestStock = await withTimeout(getDoc(stockRef));
+          if (latestStock.exists()
+            && Number.isSafeInteger(latestStock.data().count)
+            && latestStock.data().count + event.delta < 0) {
+            throw new RemoteCreateError('INSUFFICIENT_STOCK', 'insufficient-server-stock');
           }
         } catch (readError) {
           if (readError instanceof RemoteCreateError) throw readError;

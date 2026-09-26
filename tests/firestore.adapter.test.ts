@@ -52,6 +52,14 @@ beforeEach(async () => {
         'typ-7': 17,
       },
     });
+    await Promise.all(['typ-1', 'typ-2', 'typ-3', 'typ-4', 'typ-5', 'typ-6', 'typ-7'].map((sort) =>
+      setDoc(doc(db, 'stocks', sort), {
+        count: 0,
+        lastEventId: 'bootstrap',
+        updatedAt: Timestamp.now(),
+      }),
+    ));
+    await setDoc(doc(db, 'system/stockControl'), { phase: 'ACTIVE' });
   });
 });
 
