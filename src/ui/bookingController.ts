@@ -91,6 +91,7 @@ export class LocalBookingController {
     const eventId = crypto.randomUUID();
 
     const execute = async () => {
+      const delta = effectForTap(mode, action, pallet.stackSize);
       const processId = this.processForTap(
         mode,
         pallet.id,
@@ -102,7 +103,7 @@ export class LocalBookingController {
         geraetId: this.deviceId,
         sorte: pallet.id,
         art: mode === 'EINGANG' ? 'ZUGANG' : 'ABGANG',
-        delta: effectForTap(mode, action, pallet.stackSize),
+        delta,
         buchungszeit: tappedAt.toISOString(),
         konfigVersion: PALLET_CONFIG_VERSION,
         vorgangId: processId,
@@ -110,11 +111,11 @@ export class LocalBookingController {
         createdLocalAt: tappedAt.toISOString(),
       };
 
-      const result = await persistAndQueueEvent(
-        this.db,
-        event,
-        tappedAt.getTime(),
-      );
+      const result = await this.db.transaction('rw', this.db.events, this.db.outbox, async () => {
+        const current = (await loadProjection(this.db)).bestandJeSorte[pallet.id] ?? 0;
+        if (current + delta < 0) throw new Error('insufficient-stock');
+        return persistAndQueueEvent(this.db, event, tappedAt.getTime());
+      });
       if (result.status !== 'QUEUED') {
         throw new Error(`booking-not-queued:${result.status}`);
       }
@@ -183,11 +184,11 @@ export class LocalBookingController {
         createdLocalAt: tappedAt.toISOString(),
       };
 
-      const result = await persistAndQueueEvent(
-        this.db,
-        event,
-        tappedAt.getTime(),
-      );
+      const result = await this.db.transaction('rw', this.db.events, this.db.outbox, async () => {
+        const current = (await loadProjection(this.db)).bestandJeSorte[pallet.id] ?? 0;
+        if (current + delta < 0) throw new Error('insufficient-stock');
+        return persistAndQueueEvent(this.db, event, tappedAt.getTime());
+      });
       if (result.status !== 'QUEUED') {
         throw new Error(
           art === 'ANFANGSBESTAND'
@@ -211,7 +212,7 @@ export class LocalBookingController {
   undoProcess(
     processId: string,
   ): Promise<{ projection: Awaited<ReturnType<typeof loadProjection>>; correctedCount: number }> {
-    const execute = async () => {
+    const execute = async () => this.db.transaction('rw', this.db.events, this.db.outbox, async () => {
       const originals = await this.db.events
         .where('vorgangId')
         .equals(processId)
@@ -246,6 +247,20 @@ export class LocalBookingController {
       }
 
       if (corrections.length > 0) {
+        const projection = await loadProjection(this.db);
+        const correctionsBySort = new Map<string, number>();
+        for (const correction of corrections) {
+          correctionsBySort.set(
+            correction.sorte,
+            (correctionsBySort.get(correction.sorte) ?? 0) + correction.delta,
+          );
+        }
+        for (const [sort, delta] of correctionsBySort) {
+          if ((projection.bestandJeSorte[sort] ?? 0) + delta < 0) {
+            throw new Error('insufficient-stock');
+          }
+        }
+
         const result = await persistAndQueueEvents(
           this.db,
           corrections,
@@ -261,7 +276,7 @@ export class LocalBookingController {
         projection: await loadProjection(this.db),
         correctedCount: corrections.length,
       };
-    };
+    });
 
     const task = this.queue.then(execute, execute);
     this.queue = task.then(() => undefined, () => undefined);

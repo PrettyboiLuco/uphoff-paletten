@@ -44,14 +44,16 @@ test('pointer swipe across a booking button does not create a booking', async ({
 });
 
 
-test('negative inventory warns without blocking the booking', async ({ page }) => {
+test('zero stock disables removing a single pallet, and one pallet can be removed to zero', async ({ page }) => {
   const row = page.locator('.pallet-row').first();
 
+  await expect(row.locator('.adjust-button').first()).toBeDisabled();
+  await row.locator('.adjust-button').last().click();
   await row.locator('.adjust-button').first().click();
 
-  await expect(row.locator('.row-stock strong')).toHaveText('-1');
-  await expect(row).toHaveAttribute('data-negative', 'true');
-  await expect(page.locator('.last-action')).toContainText('VORZEICHEN PRÜFEN');
+  await expect(row.locator('.row-stock strong')).toHaveText('0');
+  await expect(row.locator('.adjust-button').first()).toBeDisabled();
+  await expect(row).toHaveAttribute('data-negative', 'false');
 });
 
 test('zero-net linked process is called out explicitly', async ({ page }) => {
@@ -69,11 +71,23 @@ test('outgoing mode is visually and functionally distinct', async ({ page }) => 
   await expect(page.locator('.app-shell')).toHaveAttribute('data-mode', 'ausgang');
 
   const firstRow = page.locator('.pallet-row').first();
+  await expect(firstRow.locator('.stack-button')).toBeDisabled();
+  await page.getByRole('button', { name: 'EINGANG' }).click();
   await firstRow.locator('.stack-button').click();
-  await expect(firstRow.locator('.row-stock strong')).toHaveText('-15');
-  await expect(firstRow.locator('.row-stock span')).toHaveText('NEGATIV');
-  await expect(firstRow).toHaveAttribute('data-negative', 'true');
+  await page.getByRole('button', { name: 'AUSGANG' }).click();
+  await firstRow.locator('.stack-button').click();
+  await expect(firstRow.locator('.row-stock strong')).toHaveText('0');
+  await expect(firstRow.locator('.stack-button')).toBeDisabled();
+  await expect(firstRow).toHaveAttribute('data-negative', 'false');
   await expect(firstRow.locator('.stack-button')).toContainText('−15');
+});
+
+test('outgoing stack is unavailable until enough pallets exist', async ({ page }) => {
+  const row = page.locator('.pallet-row').first();
+  await row.locator('.adjust-button').last().click();
+  await page.getByRole('button', { name: 'AUSGANG' }).click();
+  await expect(row.locator('.stack-button')).toBeDisabled();
+  await expect(row.locator('.adjust-button').first()).toBeEnabled();
 });
 
 test('seven pallet rows exist and every booking control has a large hit area', async ({ page }) => {

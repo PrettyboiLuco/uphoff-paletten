@@ -791,8 +791,12 @@ export function App() {
 
       await refreshLocalState(controller);
       await pushPending(controller);
-    } catch {
-      setError('Buchung wurde nicht gespeichert. Bitte erneut versuchen.');
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message === 'insufficient-stock'
+          ? 'Nicht genug Paletten im Bestand. Bei 0 ist keine Entnahme möglich.'
+          : 'Buchung wurde nicht gespeichert. Bitte erneut versuchen.',
+      );
     }
   };
 
@@ -860,8 +864,12 @@ export function App() {
       setLastAction(null);
       await refreshLocalState(controller);
       await pushPending(controller);
-    } catch {
-      setError('Rückgängig konnte nicht vollständig gespeichert werden.');
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message === 'insufficient-stock'
+          ? 'Rückgängig würde den Bestand unter 0 senken.'
+          : 'Rückgängig konnte nicht vollständig gespeichert werden.',
+      );
     }
   };
 
@@ -1098,7 +1106,7 @@ export function App() {
                   onClick={() =>
                     void book(type.id, 'STACK', type.stackSize)
                   }
-                  disabled={!bookingReady}
+                  disabled={!bookingReady || (mode === 'AUSGANG' && stock < type.stackSize)}
                   aria-label={`${type.name} Stapel buchen`}
                 >
                   <span>
@@ -1112,7 +1120,7 @@ export function App() {
                   onClick={() =>
                     void book(type.id, 'MINUS_ONE', type.stackSize)
                   }
-                  disabled={!bookingReady}
+                  disabled={!bookingReady || stock <= 0}
                   aria-label={`${type.name} minus eins`}
                 >
                   −1
