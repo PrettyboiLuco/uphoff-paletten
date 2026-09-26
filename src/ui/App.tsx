@@ -117,6 +117,8 @@ export function App() {
     | 'STALE'
   >('NEVER_SYNCED');
   const [pendingCount, setPendingCount] = useState(0);
+  const [rejectedCount, setRejectedCount] = useState(0);
+  const [rejectedSummary, setRejectedSummary] = useState<string | null>(null);
   const [lastRetryError, setLastRetryError] = useState<string | null>(null);
   const [backendState, setBackendState] = useState<BackendState>('INITIALIZING');
   const [backendUid, setBackendUid] = useState<string | null>(null);
@@ -178,13 +180,23 @@ export function App() {
   };
 
   const refreshLocalState = async (controller: LocalBookingController) => {
-    const [projection, health] = await Promise.all([
+    const [projection, health, rejected] = await Promise.all([
       loadProjection(controller.db),
       getSyncHealth(controller.db),
+      controller.db.events.where('syncState').equals('REJECTED').toArray(),
     ]);
 
     setStocks(projection.bestandJeSorte);
     setPendingCount(health.pendingCount);
+    setRejectedCount(health.rejectedCount);
+    const latestRejection = rejected.sort((a, b) =>
+      b.createdLocalAt.localeCompare(a.createdLocalAt))[0];
+    const rejectedSort = PALLET_TYPES.find((item) => item.id === latestRejection?.sorte);
+    setRejectedSummary(latestRejection
+      ? `${rejectedSort?.name ?? latestRejection.sorte} ${latestRejection.delta > 0 ? '+' : ''}${latestRejection.delta}: ${latestRejection.rejectionReason === 'INSUFFICIENT_STOCK'
+        ? 'nicht übernommen, weil der Cloud-Bestand dafür nicht ausreichte.'
+        : 'vom Server nicht übernommen. Details unter DATEN prüfen.'}`
+      : null);
     setSyncState(health.state);
     setLastRetryError(health.lastRetryError ?? null);
     await refreshStatistics(controller);
@@ -312,13 +324,6 @@ export function App() {
 
         if (result.rejected > 0 && navigator.onLine) {
           await verifyDeviceStillAllowed(controller);
-        }
-        if (result.rejected > 0) {
-          const lastRejected = await controller.db.events
-            .where('syncState').equals('REJECTED').toArray();
-          if (lastRejected.some((event) => event.rejectionReason === 'INSUFFICIENT_STOCK')) {
-            setError('Buchung zurückgenommen: Ein anderes Gerät hat den Bestand bereits verbucht. Der Bestand kann nicht unter 0 sinken.');
-          }
         }
       } catch (caught) {
         const enrollment = navigator.onLine
@@ -962,6 +967,7 @@ export function App() {
       return pendingCount > 0 ? `Offline · ${pendingCount} ausstehend` : 'Offline';
     }
     if (backendState === 'ERROR') return 'Sync prüfen';
+    if (rejectedCount > 0) return `${rejectedCount} abgelehnt`;
     return syncLabel(syncState, pendingCount);
   })();
 
@@ -1045,6 +1051,13 @@ export function App() {
       {error && (
         <div className="error-banner" role="alert">
           {error}
+        </div>
+      )}
+
+      {rejectedSummary && (
+        <div className="error-banner rejection-banner" role="alert">
+          <span>{rejectedCount} Buchung{rejectedCount === 1 ? '' : 'en'} abgelehnt: {rejectedSummary}</span>
+          <button onClick={() => setOpsOpen(true)}>DATEN ÖFFNEN</button>
         </div>
       )}
 
