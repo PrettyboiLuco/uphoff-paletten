@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" role="img" aria-label="Illustration einer Palette">
+  <rect width="320" height="220" rx="20" fill="#19231f"/>
+  <path d="m43 119 117-40 117 40-117 42Z" fill="#bc9165" stroke="#e1bb8d" stroke-width="5" stroke-linejoin="round"/>
+  <path d="m43 119 117 42v28L43 147Z" fill="#775338" stroke="#c49a6d" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m160 161 117-42v28l-117 42Z" fill="#906b49" stroke="#c49a6d" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m87 104 118 42m-73-57 118 42m-92-52v81M68 128v29m44-13v29m49-13v29m43-44v28m44-43v29" fill="none" stroke="#563b29" stroke-width="5"/>
+  <path d="m55 158 33 11 18-5 33 12 18-6 34 12 19-6 33-12 18 5" fill="none" stroke="#d0a67c" stroke-width="6" stroke-linecap="round"/>
+  <path d="M27 194h266" stroke="#69d9a3" stroke-opacity=".5" stroke-width="2"/>
+</svg>
