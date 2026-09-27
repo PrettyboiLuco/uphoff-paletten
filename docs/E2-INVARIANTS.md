@@ -23,6 +23,8 @@ E2 beweist, dass eine Buchung lokal dauerhaft erhalten bleibt, sich idempotent s
 13. **Konfiguration versioniert:** Bereits lokal gebuchte Events behalten ihre `konfigVersion`.
 14. **Admin-Regeln serverseitig:** INVENTUR, ANFANGSBESTAND und UMBUCHUNG sind serverseitig nicht nur durch UI geschützt.
 15. **Keine stille Reparatur:** Unauflösbare Abweichungen werden markiert; niemals wird heimlich ein Bestand "zurechtgesetzt".
+16. **Im Zweifel behalten:** `REJECTED` nur für Fehler, die für genau diesen Event-Inhalt deterministisch sind (`INVALID_ARGUMENT`, ID-Inhaltskonflikt). Alles, was sich von selbst oder durch einen Admin wieder auflösen kann (Gerät kurz gesperrt, App Check, Geräteuhr, `internal`/`unknown`/`cancelled`/`failed-precondition`, Timeouts), bleibt in der Outbox und wird sichtbar wiederholt. Die Zuordnung steht an genau einer Stelle: `REMOTE_ERROR_POLICY` in `src/sync/types.ts`; ein neuer Fehlercode ohne Eintrag bricht `npm run typecheck`.
+17. **Fehlerpfade mit echten Regeln testen:** Jede serverseitige Ablehnung, die ein Fake im Unit-Test simuliert, braucht zusätzlich einen Emulator-Test mit `firestore.rules`, der den Auslöser real herstellt und den Ausgang nach Wegfall des Auslösers prüft (`tests/firestore.recovery.test.ts`).
 
 ## Gate-Struktur
 

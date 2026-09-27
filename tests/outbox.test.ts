@@ -214,18 +214,75 @@ describe('E2.2 outbox and retry', () => {
     await db.close();
   });
 
-  it('marks permanent permission errors rejected and does not silently retry forever', async () => {
+  it('keeps a server permission denial pending and delivers it once access returns', async () => {
+    // Regression: a briefly disabled device, a missing App Check token or a
+    // device clock ahead of the server all surface as PERMISSION_DENIED.
+    // None of them may silently remove a real booking from the stock.
     const db = makeDb('e22-permission');
     const remote = new FakeRemote();
     remote.mode = 'PERMISSION_DENIED';
     await persistAndQueueEvent(db, makeEvent(), 1000);
 
+    const denied = await runSyncPass(db, remote, 1000);
+
+    expect(denied.rejected).toBe(0);
+    expect(denied.retried).toBe(1);
+    expect(denied.permissionDenied).toBe(1);
+    expect((await db.events.get('event-1'))?.syncState).toBe('PENDING');
+    expect((await db.outbox.get('event-1'))?.lastError).toBe('PERMISSION_DENIED');
+
+    remote.mode = 'NORMAL';
+    const recovered = await runSyncPass(db, remote, 120_000);
+
+    expect(recovered.confirmed).toBe(1);
+    expect((await db.events.get('event-1'))?.syncState).toBe('CONFIRMED');
+    expect(await db.outbox.count()).toBe(0);
+    await db.close();
+  });
+
+  it('rejects only deterministic content errors for good', async () => {
+    const db = makeDb('e22-invalid-argument');
+    const remote: RemoteEventStore = {
+      async createEvent() {
+        throw new RemoteCreateError('INVALID_ARGUMENT', 'bad-field');
+      },
+      async getEvent() {
+        return undefined;
+      },
+    };
+    await persistAndQueueEvent(db, makeEvent(), 1000);
+
     const result = await runSyncPass(db, remote, 1000);
 
     expect(result.rejected).toBe(1);
-    expect(await db.outbox.count()).toBe(0);
-    expect((await db.events.get('event-1'))?.syncState).toBe('REJECTED');
-    expect((await db.events.get('event-1'))?.rejectionReason).toBe('PERMISSION_DENIED');
+    expect((await db.events.get('event-1'))?.rejectionReason).toBe('INVALID_ARGUMENT');
+    await db.close();
+  });
+
+  it('retries one unreadable duplicate check without blocking bookings behind it', async () => {
+    const db = makeDb('e22-verify-read-failure');
+    await persistAndQueueEvent(db, makeEvent({ id: 'first' }), 1000);
+    await persistAndQueueEvent(db, makeEvent({ id: 'second' }), 2000);
+    const created: string[] = [];
+    const remote: RemoteEventStore = {
+      async createEvent(event) {
+        if (event.id === 'first') {
+          throw new RemoteCreateError('ALREADY_EXISTS', 'exists');
+        }
+        created.push(event.id);
+        return { status: 'CREATED' };
+      },
+      async getEvent() {
+        throw new Error('invalid-remote-serverzeit');
+      },
+    };
+
+    const result = await runSyncPass(db, remote, 10_000);
+
+    expect(created).toEqual(['second']);
+    expect(result.retried).toBe(1);
+    expect((await db.outbox.get('first'))?.attemptCount).toBe(1);
+    expect((await db.events.get('first'))?.syncState).toBe('PENDING');
     await db.close();
   });
 

@@ -660,6 +660,27 @@ describe('E2.3 Firestore security rules', () => {
       ),
     );
 
+    // A device clock a few minutes ahead must not lose bookings.
+    await assertSucceeds(
+      setDoc(
+        doc(db, 'events/clock-ahead'),
+        eventData('iphone-user', {
+          id: 'clock-ahead',
+          buchungszeit: Timestamp.fromDate(new Date(Date.now() + 30 * 60_000)),
+        }),
+      ),
+    );
+
+    await assertFails(
+      setDoc(
+        doc(db, 'events/clock-day-ahead'),
+        eventData('iphone-user', {
+          id: 'clock-day-ahead',
+          buchungszeit: Timestamp.fromDate(new Date(Date.now() + 25 * 3_600_000)),
+        }),
+      ),
+    );
+
     await assertSucceeds(
       setDoc(
         doc(db, 'events/old-offline'),

@@ -7,6 +7,7 @@ import {
   scheduleRetry,
 } from '../persistence/outbox';
 import {
+  REMOTE_ERROR_POLICY,
   RemoteCreateError,
   type RemoteEventStore,
 } from './types';
@@ -35,6 +36,8 @@ export interface SyncPassResult {
   retried: number;
   rejected: number;
   conflicts: number;
+  /** Retried because the server denied the write; the device may be blocked. */
+  permissionDenied: number;
 }
 
 export async function runSyncPass(
@@ -47,6 +50,7 @@ export async function runSyncPass(
     retried: 0,
     rejected: 0,
     conflicts: 0,
+    permissionDenied: 0,
   };
 
   const items = await getReadyOutboxItems(db, now);
@@ -105,8 +109,24 @@ export async function runSyncPass(
     } catch (error) {
       if (!(error instanceof RemoteCreateError)) throw error;
 
-      if (error.code === 'ALREADY_EXISTS') {
-        const remote = await remoteStore.getEvent(local.id);
+      const policy = REMOTE_ERROR_POLICY[error.code];
+
+      if (policy === 'VERIFY') {
+        let remote: PalletEvent | undefined;
+        try {
+          remote = await remoteStore.getEvent(local.id);
+        } catch (readError) {
+          // One unreadable document must not abort the pass for every
+          // booking behind it; retry this one with backoff instead.
+          await scheduleRetry(
+            db,
+            item,
+            now,
+            readError instanceof RemoteCreateError ? readError.code : 'TRANSIENT',
+          );
+          result.retried += 1;
+          continue;
+        }
 
         if (remote && sameRemoteContent(local, remote)) {
           await markConfirmed(db, local.id, remote.serverzeit);
@@ -118,13 +138,10 @@ export async function runSyncPass(
         continue;
       }
 
-      if (
-        error.code === 'TRANSIENT' ||
-        error.code === 'UNAUTHENTICATED' ||
-        error.code === 'QUOTA_EXHAUSTED'
-      ) {
+      if (policy === 'RETRY') {
         await scheduleRetry(db, item, now, error.code);
         result.retried += 1;
+        if (error.code === 'PERMISSION_DENIED') result.permissionDenied += 1;
         continue;
       }
 

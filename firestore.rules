@@ -98,7 +98,7 @@ service cloud.firestore {
         && request.resource.data.buchungszeit is timestamp
         && request.resource.data.serverzeit is timestamp
         && request.resource.data.serverzeit == request.time
-        && request.resource.data.buchungszeit <= request.time + duration.value(5, 'm')
+        && request.resource.data.buchungszeit <= request.time + duration.value(24, 'h')
         && request.resource.data.konfigVersion is string
         && request.resource.data.konfigVersion.size() > 0
         && request.resource.data.konfigVersion.size() <= 64

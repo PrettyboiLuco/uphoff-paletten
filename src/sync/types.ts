@@ -21,6 +21,24 @@ export type RemoteCreateErrorCode =
   | 'UNAUTHENTICATED'
   | 'QUOTA_EXHAUSTED';
 
+/**
+ * Single source of truth for what the outbox does with each remote error.
+ *
+ * REJECT removes a booking from the stock for good, so it is reserved for
+ * errors that are deterministic for this exact event content. PERMISSION_DENIED
+ * is NOT deterministic here: a briefly disabled device, a missing App Check
+ * token or a device clock ahead of the server all produce it and all recover.
+ * Adding a new error code without a policy fails `npm run typecheck`.
+ */
+export const REMOTE_ERROR_POLICY = {
+  ALREADY_EXISTS: 'VERIFY',
+  TRANSIENT: 'RETRY',
+  UNAUTHENTICATED: 'RETRY',
+  QUOTA_EXHAUSTED: 'RETRY',
+  PERMISSION_DENIED: 'RETRY',
+  INVALID_ARGUMENT: 'REJECT',
+} as const satisfies Record<RemoteCreateErrorCode, 'VERIFY' | 'RETRY' | 'REJECT'>;
+
 export class RemoteCreateError extends Error {
   constructor(
     public readonly code: RemoteCreateErrorCode,
