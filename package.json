@@ -26,7 +26,7 @@
     "test:e6-browser": "playwright test tests/browser/ops.spec.ts",
     "test:e7-adapter": "firebase emulators:exec --only firestore --project uphoff-paletten-test \"vitest run --no-file-parallelism tests/firestore.adapter.test.ts tests/firestore.recovery.test.ts\"",
     "test:e7-pwa": "playwright test --config=playwright.release.config.ts",
-    "test:release-unit": "vitest run tests/domain.test.ts tests/persistence.test.ts tests/outbox.test.ts tests/multiclient.test.ts tests/stock-floor.test.ts tests/stock-floor-preflight.test.ts tests/health.test.ts tests/statistics.test.ts tests/aggregates.test.ts tests/ui-logic.test.ts tests/layout.test.ts tests/ops.test.ts tests/report.test.ts tests/remote-error-policy.test.ts tests/firestore-listener.test.ts"
+    "test:release-unit": "vitest run tests/domain.test.ts tests/persistence.test.ts tests/outbox.test.ts tests/multiclient.test.ts tests/stock-floor.test.ts tests/stock-floor-preflight.test.ts tests/health.test.ts tests/statistics.test.ts tests/aggregates.test.ts tests/ui-logic.test.ts tests/layout.test.ts tests/ops.test.ts tests/report.test.ts tests/remote-error-policy.test.ts tests/firestore-listener.test.ts tests/sync-status-control.test.tsx"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
