@@ -55,7 +55,9 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   min-height: 34px; padding: 0 11px; border: 1px solid var(--line);
   border-radius: 999px; display: flex; align-items: center; gap: 7px;
   font-size: 11px; color: #c6cbd0; background: rgba(255,255,255,.03);
+  font-family: inherit; cursor: pointer;
 }
+.sync-pill:disabled { cursor: default; opacity: .7; }
 .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--incoming); box-shadow: 0 0 12px rgba(78,227,154,.5); }
 
 .count-page { display: grid; gap: 9px; }
