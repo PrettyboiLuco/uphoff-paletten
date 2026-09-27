@@ -128,4 +128,22 @@ describe('sync health', () => {
     ).toBe('SYNCHRON');
     await database.close();
   });
+
+  it('keeps an orphaned outbox marker visible instead of reporting synchronized', async () => {
+    const database = db('health-orphan-marker');
+    await database.meta.put({
+      key: 'lastSuccessfulSyncAt', value: '2026-09-24T06:05:00Z',
+    });
+    await database.outbox.put({
+      eventId: 'missing-local-event', status: 'WAITING',
+      attemptCount: 1, nextAttemptAt: Date.parse('2026-09-24T06:11:00Z'),
+      lastAttemptAt: Date.parse('2026-09-24T06:09:00Z'),
+      lastError: 'MISSING_LOCAL_EVENT',
+    });
+    const health = await getSyncHealth(database, Date.parse('2026-09-24T06:10:00Z'));
+    expect(health).toMatchObject({
+      state: 'PENDING', pendingCount: 1, lastRetryError: 'MISSING_LOCAL_EVENT',
+    });
+    await database.close();
+  });
 });

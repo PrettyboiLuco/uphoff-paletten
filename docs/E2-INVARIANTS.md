@@ -14,7 +14,7 @@ E2 beweist, dass eine Buchung lokal dauerhaft erhalten bleibt, sich idempotent s
 4. **Konfliktquarantäne:** Dieselbe Event-ID mit abweichendem fachlichem Inhalt wird nicht gezählt, sondern als Konflikt markiert.
 5. **Append-only fachlich:** Fachliche Events werden nie überschrieben oder gelöscht. Lokale Sync-Metadaten sind separat veränderbar.
 6. **Buchungszeit bleibt fachlich:** Statistiken verwenden `buchungszeit`, nie `serverzeit`.
-7. **Keine falsche Grün-Anzeige:** "Synchron" ist nur erlaubt, wenn keine lokalen unbestätigten/rejected Events existieren und der letzte Serverabgleich erfolgreich war.
+7. **Keine falsche Grün-Anzeige:** "Synchron" ist nur erlaubt, wenn keine lokalen unbestätigten/rejected Events und keine verwaisten Outbox-Einträge existieren und der letzte Serverabgleich erfolgreich war.
 8. **Retry ohne Duplikat:** Verlorene Serverbestätigung darf keinen zweiten fachlichen Event erzeugen.
 9. **Rejected sichtbar:** Endgültig abgelehnte Events bleiben lokal nachvollziehbar, werden aber nicht in die bestätigte Projektion eingerechnet.
 10. **Offline korrekt:** Ohne Netz muss weiter gebucht werden können. Andere Geräte dürfen dabei nicht fälschlich als aktuell dargestellt werden.
