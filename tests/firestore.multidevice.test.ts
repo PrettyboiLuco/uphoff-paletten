@@ -123,7 +123,7 @@ describe('real Firestore rules: repeated two-device exchange', () => {
     await b.local.close();
   });
 
-  it('rejects the losing device when both try to take the last stack offline', async () => {
+  it('keeps the second offline removal until new stock arrives, then uploads it', async () => {
     const a = device('a');
     const b = device('b');
     await book(a.local, 'a', 'initial-stack', 15);
@@ -134,15 +134,32 @@ describe('real Firestore rules: repeated two-device exchange', () => {
     await book(b.local, 'b', 'b-last', -15);
     const outcomes = await Promise.all([sync(a), sync(b)]);
     expect(outcomes.reduce((count, outcome) => count + outcome.push.confirmed, 0)).toBe(1);
-    expect(outcomes.reduce((count, outcome) => count + outcome.push.rejected, 0)).toBe(1);
+    expect(outcomes.reduce((count, outcome) => count + outcome.push.retried, 0)).toBe(1);
+    expect(outcomes.reduce((count, outcome) => count + outcome.push.rejected, 0)).toBe(0);
+
+    const aPending = (await a.local.outbox.count()) === 1;
+    const winner = aPending ? b : a;
+    const loser = aPending ? a : b;
+    const winnerUid = aPending ? 'b' : 'a';
+    const loserEventId = aPending ? 'a-last' : 'b-last';
+    expect((await loser.local.events.get(loserEventId))?.syncState).toBe('PENDING');
+    expect((await loser.local.outbox.get(loserEventId))?.lastError).toBe('INSUFFICIENT_STOCK');
 
     await sync(a);
     await sync(b);
+    expect(await loser.local.outbox.count()).toBe(1);
+
+    await book(winner.local, winnerUid, 'restock-after-race', 15);
+    expect((await sync(winner)).push.confirmed).toBe(1);
+    const later = new Date();
+    expect((await runFullSync(loser.local, loser.remote, later.getTime() + 120_000, later.toISOString())).push.confirmed).toBe(1);
+    await sync(winner);
     expect(await stock(a)).toBe(0);
     expect(await stock(b)).toBe(0);
     expect(await a.local.outbox.count()).toBe(0);
     expect(await b.local.outbox.count()).toBe(0);
     expect((await getDoc(doc(a.firestore, 'stocks/typ-1'))).data()?.count).toBe(0);
+    expect((await getDoc(doc(a.firestore, 'events', loserEventId))).exists()).toBe(true);
     await a.local.close();
     await b.local.close();
   });

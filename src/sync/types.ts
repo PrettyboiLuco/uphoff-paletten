@@ -22,6 +22,26 @@ export type RemoteCreateErrorCode =
   | 'QUOTA_EXHAUSTED'
   | 'INSUFFICIENT_STOCK';
 
+/**
+ * Single source of truth for what the outbox does with each remote error.
+ *
+ * A raw Firebase error never proves that this exact booking content can never
+ * be accepted. INVALID_ARGUMENT, too, can originate outside the event data.
+ * PERMISSION_DENIED
+ * is NOT deterministic here: a briefly disabled device, a missing App Check
+ * token or a device clock ahead of the server all produce it and all recover.
+ * Adding a new error code without a policy fails `npm run typecheck`.
+ */
+export const REMOTE_ERROR_POLICY = {
+  ALREADY_EXISTS: 'VERIFY',
+  TRANSIENT: 'RETRY',
+  UNAUTHENTICATED: 'RETRY',
+  QUOTA_EXHAUSTED: 'RETRY',
+  PERMISSION_DENIED: 'RETRY',
+  INVALID_ARGUMENT: 'RETRY',
+  INSUFFICIENT_STOCK: 'RETRY',
+} as const satisfies Record<RemoteCreateErrorCode, 'VERIFY' | 'RETRY'>;
+
 export class RemoteCreateError extends Error {
   constructor(
     public readonly code: RemoteCreateErrorCode,

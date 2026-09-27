@@ -171,24 +171,20 @@ function mapFirebaseError(error: unknown): RemoteCreateError {
     return new RemoteCreateError('TRANSIENT', 'unknown-remote-error');
   }
 
-  if (error.code === 'resource-exhausted') {
-    return new RemoteCreateError('QUOTA_EXHAUSTED', error.message);
+  switch (error.code) {
+    case 'resource-exhausted':
+      return new RemoteCreateError('QUOTA_EXHAUSTED', error.message);
+    case 'unauthenticated':
+      return new RemoteCreateError('UNAUTHENTICATED', error.message);
+    case 'invalid-argument':
+      return new RemoteCreateError('INVALID_ARGUMENT', error.message);
+    case 'permission-denied':
+      return new RemoteCreateError('PERMISSION_DENIED', error.message);
+    default:
+      // Unknown or ambiguous codes (internal, unknown, cancelled,
+      // failed-precondition, ...) must never discard a booking.
+      return new RemoteCreateError('TRANSIENT', error.message);
   }
-  if (error.code === 'unauthenticated') {
-    return new RemoteCreateError('UNAUTHENTICATED', error.message);
-  }
-  if (error.code === 'invalid-argument') {
-    return new RemoteCreateError('INVALID_ARGUMENT', error.message);
-  }
-  if (
-    error.code === 'unavailable'
-    || error.code === 'deadline-exceeded'
-    || error.code === 'aborted'
-  ) {
-    return new RemoteCreateError('TRANSIENT', error.message);
-  }
-
-  return new RemoteCreateError('PERMISSION_DENIED', error.message);
 }
 
 export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {

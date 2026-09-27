@@ -322,7 +322,10 @@ export function App() {
           Date.now(),
         );
 
-        if (result.rejected > 0 && navigator.onLine) {
+        if (
+          (result.rejected > 0 || result.permissionDenied > 0)
+          && navigator.onLine
+        ) {
           await verifyDeviceStillAllowed(controller);
         }
       } catch (caught) {
@@ -358,7 +361,8 @@ export function App() {
         );
 
         const enrollment =
-          result.push.rejected > 0 && navigator.onLine
+          (result.push.rejected > 0 || result.push.permissionDenied > 0)
+          && navigator.onLine
             ? await verifyDeviceStillAllowed(controller)
             : true;
 
@@ -951,8 +955,14 @@ export function App() {
       : `${outgoingChange >= 0 ? '+' : ''}${Math.round(outgoingChange)} % zur Vorperiode`;
 
   const syncDisplay = (() => {
+    if (lastRetryError === 'INSUFFICIENT_STOCK' && pendingCount > 0) {
+      return `Bestand reicht noch nicht · ${pendingCount} ausstehend`;
+    }
     if (lastRetryError === 'QUOTA_EXHAUSTED') return 'Kontingent erreicht';
     if (lastRetryError === 'UNAUTHENTICATED') return 'Anmeldung prüfen';
+    if (lastRetryError === 'PERMISSION_DENIED' && pendingCount > 0) {
+      return `Server verweigert · ${pendingCount} ausstehend`;
+    }
     if (backendState === 'INITIALIZING') return 'Verbinde …';
     if (backendState === 'NOT_CONFIGURED') {
       return pendingCount > 0 ? `Nur lokal · ${pendingCount} ausstehend` : 'Nur lokal';
@@ -974,7 +984,9 @@ export function App() {
   const syncTone =
     lastRetryError === 'QUOTA_EXHAUSTED'
       ? 'quota'
-      : lastRetryError === 'UNAUTHENTICATED'
+      : lastRetryError === 'INSUFFICIENT_STOCK'
+          || lastRetryError === 'UNAUTHENTICATED'
+          || (lastRetryError === 'PERMISSION_DENIED' && pendingCount > 0)
         ? 'error'
         : backendState === 'ACTIVE'
           ? syncState.toLowerCase()
