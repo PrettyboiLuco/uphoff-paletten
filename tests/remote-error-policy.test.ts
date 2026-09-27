@@ -45,4 +45,3 @@ describe('remote error policy', () => {
     expect(policy).toBe('RETRY');
   });
 });
-

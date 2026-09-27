@@ -76,4 +76,3 @@ Firebase `@firebase/firestore` (`remote/rpc_error.ts`, `isPermanentError`) stuft
 ## Abnahme
 
 E2 ist erst abgeschlossen, wenn E2.1 bis E2.4 jeweils unabhängig grün sind. UI, Statistik und Layout-Editor dürfen die Persistenz-/Sync-Domain danach nur konsumieren, nicht umgehen.
-

@@ -74,4 +74,3 @@ export interface RemoteRealtimeEventStore extends RemoteReadableEventStore {
     after?: RemoteCursor,
   ): RemoteUnsubscribe;
 }
-

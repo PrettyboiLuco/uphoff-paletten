@@ -212,4 +212,3 @@ describe('release integration: Firestore adapter + real rules', () => {
     }
   });
 });
-

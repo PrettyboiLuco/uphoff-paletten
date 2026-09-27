@@ -180,4 +180,3 @@ export async function persistAndQueueEvents(
     return { status: 'QUEUED', events: toInsert };
   });
 }
-
