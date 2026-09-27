@@ -120,6 +120,7 @@ export function App() {
   const [pendingCount, setPendingCount] = useState(0);
   const [lastRetryError, setLastRetryError] = useState<string | null>(null);
   const [backendState, setBackendState] = useState<BackendState>('INITIALIZING');
+  const backendStateRef = useRef<BackendState>(backendState);
   const [backendUid, setBackendUid] = useState<string | null>(null);
   const [backendRole, setBackendRole] = useState<'ADMIN' | 'USER' | null>(null);
   const [bookingReady, setBookingReady] = useState(false);
@@ -129,6 +130,7 @@ export function App() {
   const [sortFilter, setSortFilter] = useState<string>('ALL');
   const periodRef = useRef<StatisticsPeriodKind>('TODAY');
   const sortFilterRef = useRef<string>('ALL');
+  backendStateRef.current = backendState;
   periodRef.current = period;
   sortFilterRef.current = sortFilter;
 
@@ -641,7 +643,14 @@ export function App() {
 
         retryTimer = window.setInterval(() => {
           if (navigator.onLine && remoteRef.current) {
-            void pushPending(controller);
+            if (
+              backendStateRef.current === 'ERROR'
+              || realtimeNeedsRestartRef.current
+            ) {
+              void fullSync(controller);
+            } else {
+              void pushPending(controller);
+            }
           }
         }, 15_000);
 
