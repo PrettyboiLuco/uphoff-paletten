@@ -104,6 +104,7 @@ export function App() {
   const realtimeNeedsRestartRef = useRef(false);
   const runtimeNeedsRetryRef = useRef(false);
   const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const manualSyncRef = useRef<(() => Promise<void>) | null>(null);
   const swipeStartX = useRef<number | null>(null);
 
   const [tab, setTab] = useState<Tab>('COUNT');
@@ -121,6 +122,7 @@ export function App() {
   const [rejectedSummary, setRejectedSummary] = useState<string | null>(null);
   const [lastRetryError, setLastRetryError] = useState<string | null>(null);
   const [backendState, setBackendState] = useState<BackendState>('INITIALIZING');
+  const [manualSyncing, setManualSyncing] = useState(false);
   const backendStateRef = useRef<BackendState>(backendState);
   const [backendUid, setBackendUid] = useState<string | null>(null);
   const [backendRole, setBackendRole] = useState<'ADMIN' | 'USER' | null>(null);
@@ -603,6 +605,12 @@ export function App() {
 
         runtimeNeedsRetryRef.current = false;
         remoteRef.current = runtime.remote;
+        const heartbeatDb = runtime.db;
+        const heartbeatUid = runtime.uid;
+        manualSyncRef.current = async () => {
+          await fullSync(controller);
+          await publishHeartbeat(heartbeatDb, heartbeatUid);
+        };
 
         let palletConfigUsable = PALLET_CONFIG_READY || allowLocalOnly;
 
@@ -679,7 +687,7 @@ export function App() {
 
         heartbeatTimer = window.setInterval(() => {
           void publishHeartbeat(runtime.db!, runtime.uid!);
-        }, 15 * 60_000);
+        }, 3 * 60_000);
       } catch (caught) {
         if (cancelled) return;
         setBackendState('ERROR');
@@ -705,6 +713,7 @@ export function App() {
       controller.db.close();
       controllerRef.current = null;
       remoteRef.current = null;
+      manualSyncRef.current = null;
     };
     // Startup is intentionally one-shot. Current filters are read through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1040,9 +1049,39 @@ export function App() {
           >
             DATEN
           </button>
-          <div
+          <button
+            type="button"
             className={`sync-pill sync-${syncTone}`}
-            aria-label="Synchronisationsstatus"
+            aria-label="Synchronisierung prüfen"
+            disabled={
+              manualSyncing
+              || backendState === 'INITIALIZING'
+              || backendState === 'NOT_CONFIGURED'
+              || backendState === 'DISABLED'
+              || backendState === 'OFFLINE'
+            }
+            onClick={() => {
+              if (!manualSyncRef.current) {
+                resetFirebaseRuntimeForRetry();
+                window.location.reload();
+                return;
+              }
+              setManualSyncing(true);
+              void manualSyncRef.current()
+                .catch(async (caught) => {
+                  setBackendState('ERROR');
+                  if (controllerRef.current) {
+                    await recordSyncError(
+                      controllerRef.current,
+                      'MANUAL_SYNC_FAILED',
+                      caught,
+                    );
+                  }
+                })
+                .finally(() => {
+                  setManualSyncing(false);
+                });
+            }}
             title={
               backendState === 'AWAITING_APPROVAL' && backendUid
                 ? `Geräte-ID: ${backendUid}`
@@ -1050,8 +1089,8 @@ export function App() {
             }
           >
             <span className="sync-dot" />
-            {syncDisplay}
-          </div>
+            {manualSyncing ? 'Prüfe …' : syncDisplay}
+          </button>
         </div>
       </header>
 
