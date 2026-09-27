@@ -4,9 +4,11 @@ import {
   getReadyOutboxItems,
   markConfirmed,
   markRejected,
+  restoreRetryableRejections,
   scheduleRetry,
 } from '../persistence/outbox';
 import {
+  REMOTE_ERROR_POLICY,
   RemoteCreateError,
   type RemoteEventStore,
 } from './types';
@@ -35,6 +37,8 @@ export interface SyncPassResult {
   retried: number;
   rejected: number;
   conflicts: number;
+  /** Retried because the server denied the write; the device may be blocked. */
+  permissionDenied: number;
 }
 
 export async function runSyncPass(
@@ -47,8 +51,10 @@ export async function runSyncPass(
     retried: 0,
     rejected: 0,
     conflicts: 0,
+    permissionDenied: 0,
   };
 
+  await restoreRetryableRejections(db, now);
   const items = await getReadyOutboxItems(db, now);
   const orderedItems = [...items].sort(
     (a, b) => a.nextAttemptAt - b.nextAttemptAt,
@@ -58,7 +64,10 @@ export async function runSyncPass(
   for (const item of orderedItems) {
     const event = await db.events.get(item.eventId);
     if (!event) {
-      await db.outbox.delete(item.eventId);
+      // The missing local record needs investigation. Keep its outbox marker
+      // visible instead of silently erasing the only trace of the booking.
+      await scheduleRetry(db, item, now, 'MISSING_LOCAL_EVENT');
+      result.retried += 1;
       continue;
     }
     enriched.push({ item, event });
@@ -67,6 +76,13 @@ export async function runSyncPass(
   enriched.sort((a, b) => {
     if (a.event.art === 'KORREKTUR' && b.event.art !== 'KORREKTUR') return 1;
     if (a.event.art !== 'KORREKTUR' && b.event.art === 'KORREKTUR') return -1;
+    // A single undo may reverse both a stack booking and its subsequent -1
+    // taps. Apply the stock-increasing corrections first: otherwise a valid
+    // undo can transiently cross zero and be permanently rejected by Firestore.
+    if (a.event.art === 'KORREKTUR' && b.event.art === 'KORREKTUR') {
+      if (a.event.delta > 0 && b.event.delta < 0) return -1;
+      if (a.event.delta < 0 && b.event.delta > 0) return 1;
+    }
     return a.item.nextAttemptAt - b.item.nextAttemptAt;
   });
 
@@ -74,8 +90,9 @@ export async function runSyncPass(
     if (local.art === 'KORREKTUR' && local.korrigiertId) {
       const original = await db.events.get(local.korrigiertId);
       if (!original) {
-        await markRejected(db, local.id, 'ORPHAN_CORRECTION');
-        result.rejected += 1;
+        // An original may arrive from another device on a later pull.
+        await scheduleRetry(db, item, now, 'WAITING_FOR_ORIGINAL');
+        result.retried += 1;
         continue;
       }
 
@@ -103,12 +120,35 @@ export async function runSyncPass(
       result.confirmed += 1;
       continue;
     } catch (error) {
-      if (!(error instanceof RemoteCreateError)) throw error;
+      if (!(error instanceof RemoteCreateError)) {
+        await scheduleRetry(db, item, now, 'UNKNOWN_REMOTE_ERROR');
+        result.retried += 1;
+        continue;
+      }
 
-      if (error.code === 'ALREADY_EXISTS') {
-        const remote = await remoteStore.getEvent(local.id);
+      const policy = REMOTE_ERROR_POLICY[error.code];
 
-        if (remote && sameRemoteContent(local, remote)) {
+      if (policy === 'VERIFY') {
+        let remote: PalletEvent | undefined;
+        try {
+          remote = await remoteStore.getEvent(local.id);
+        } catch (readError) {
+          // One unreadable document must not abort the pass for every
+          // booking behind it; retry this one with backoff instead.
+          await scheduleRetry(
+            db,
+            item,
+            now,
+            readError instanceof RemoteCreateError ? readError.code : 'TRANSIENT',
+          );
+          result.retried += 1;
+          continue;
+        }
+
+        if (!remote) {
+          await scheduleRetry(db, item, now, 'VERIFY_NOT_FOUND');
+          result.retried += 1;
+        } else if (sameRemoteContent(local, remote)) {
           await markConfirmed(db, local.id, remote.serverzeit);
           result.confirmed += 1;
         } else {
@@ -118,18 +158,11 @@ export async function runSyncPass(
         continue;
       }
 
-      if (
-        error.code === 'TRANSIENT' ||
-        error.code === 'UNAUTHENTICATED' ||
-        error.code === 'QUOTA_EXHAUSTED'
-      ) {
-        await scheduleRetry(db, item, now, error.code);
-        result.retried += 1;
-        continue;
-      }
-
-      await markRejected(db, local.id, error.code);
-      result.rejected += 1;
+      // All raw remote codes, including an unknown runtime value, retain the
+      // booking. The compile-time map checks every declared error code.
+      await scheduleRetry(db, item, now, error.code);
+      result.retried += 1;
+      if (error.code === 'PERMISSION_DENIED') result.permissionDenied += 1;
     }
   }
 

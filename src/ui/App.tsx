@@ -80,9 +80,8 @@ const emptyComparison: PeriodComparison = {
   inventurdifferenz: { current: 0, previous: 0, percentChange: 0 },
 };
 
-const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined)?.trim()
-  || '0.1.0';
+declare const __UPHOFF_BUILD_VERSION__: string;
+const APP_VERSION = __UPHOFF_BUILD_VERSION__;
 
 const PERIODS: readonly { id: StatisticsPeriodKind; label: string }[] = [
   { id: 'TODAY', label: 'HEUTE' },
@@ -105,6 +104,7 @@ export function App() {
   const realtimeNeedsRestartRef = useRef(false);
   const runtimeNeedsRetryRef = useRef(false);
   const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const manualSyncRef = useRef<(() => Promise<void>) | null>(null);
   const swipeStartX = useRef<number | null>(null);
 
   const [tab, setTab] = useState<Tab>('COUNT');
@@ -118,8 +118,12 @@ export function App() {
     | 'STALE'
   >('NEVER_SYNCED');
   const [pendingCount, setPendingCount] = useState(0);
+  const [rejectedCount, setRejectedCount] = useState(0);
+  const [rejectedSummary, setRejectedSummary] = useState<string | null>(null);
   const [lastRetryError, setLastRetryError] = useState<string | null>(null);
   const [backendState, setBackendState] = useState<BackendState>('INITIALIZING');
+  const [manualSyncing, setManualSyncing] = useState(false);
+  const backendStateRef = useRef<BackendState>(backendState);
   const [backendUid, setBackendUid] = useState<string | null>(null);
   const [backendRole, setBackendRole] = useState<'ADMIN' | 'USER' | null>(null);
   const [bookingReady, setBookingReady] = useState(false);
@@ -129,6 +133,7 @@ export function App() {
   const [sortFilter, setSortFilter] = useState<string>('ALL');
   const periodRef = useRef<StatisticsPeriodKind>('TODAY');
   const sortFilterRef = useRef<string>('ALL');
+  backendStateRef.current = backendState;
   periodRef.current = period;
   sortFilterRef.current = sortFilter;
 
@@ -179,13 +184,23 @@ export function App() {
   };
 
   const refreshLocalState = async (controller: LocalBookingController) => {
-    const [projection, health] = await Promise.all([
+    const [projection, health, rejected] = await Promise.all([
       loadProjection(controller.db),
       getSyncHealth(controller.db),
+      controller.db.events.where('syncState').equals('REJECTED').toArray(),
     ]);
 
     setStocks(projection.bestandJeSorte);
     setPendingCount(health.pendingCount);
+    setRejectedCount(health.rejectedCount);
+    const latestRejection = rejected.sort((a, b) =>
+      b.createdLocalAt.localeCompare(a.createdLocalAt))[0];
+    const rejectedSort = PALLET_TYPES.find((item) => item.id === latestRejection?.sorte);
+    setRejectedSummary(latestRejection
+      ? `${rejectedSort?.name ?? latestRejection.sorte} ${latestRejection.delta > 0 ? '+' : ''}${latestRejection.delta}: ${latestRejection.rejectionReason === 'INSUFFICIENT_STOCK'
+        ? 'nicht übernommen, weil der Cloud-Bestand dafür nicht ausreichte.'
+        : 'vom Server nicht übernommen. Details unter DATEN prüfen.'}`
+      : null);
     setSyncState(health.state);
     setLastRetryError(health.lastRetryError ?? null);
     await refreshStatistics(controller);
@@ -311,7 +326,10 @@ export function App() {
           Date.now(),
         );
 
-        if (result.rejected > 0 && navigator.onLine) {
+        if (
+          (result.rejected > 0 || result.permissionDenied > 0)
+          && navigator.onLine
+        ) {
           await verifyDeviceStillAllowed(controller);
         }
       } catch (caught) {
@@ -347,7 +365,8 @@ export function App() {
         );
 
         const enrollment =
-          result.push.rejected > 0 && navigator.onLine
+          (result.push.rejected > 0 || result.push.permissionDenied > 0)
+          && navigator.onLine
             ? await verifyDeviceStillAllowed(controller)
             : true;
 
@@ -586,6 +605,12 @@ export function App() {
 
         runtimeNeedsRetryRef.current = false;
         remoteRef.current = runtime.remote;
+        const heartbeatDb = runtime.db;
+        const heartbeatUid = runtime.uid;
+        manualSyncRef.current = async () => {
+          await fullSync(controller);
+          await publishHeartbeat(heartbeatDb, heartbeatUid);
+        };
 
         let palletConfigUsable = PALLET_CONFIG_READY || allowLocalOnly;
 
@@ -641,7 +666,14 @@ export function App() {
 
         retryTimer = window.setInterval(() => {
           if (navigator.onLine && remoteRef.current) {
-            void pushPending(controller);
+            if (
+              backendStateRef.current === 'ERROR'
+              || realtimeNeedsRestartRef.current
+            ) {
+              void fullSync(controller);
+            } else {
+              void pushPending(controller);
+            }
           }
         }, 15_000);
 
@@ -655,7 +687,7 @@ export function App() {
 
         heartbeatTimer = window.setInterval(() => {
           void publishHeartbeat(runtime.db!, runtime.uid!);
-        }, 15 * 60_000);
+        }, 3 * 60_000);
       } catch (caught) {
         if (cancelled) return;
         setBackendState('ERROR');
@@ -681,6 +713,7 @@ export function App() {
       controller.db.close();
       controllerRef.current = null;
       remoteRef.current = null;
+      manualSyncRef.current = null;
     };
     // Startup is intentionally one-shot. Current filters are read through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -771,7 +804,7 @@ export function App() {
   ) => {
     const pallet = PALLET_TYPES.find((item) => item.id === palletId);
     const controller = controllerRef.current;
-    if (!pallet || !controller || pallet.stackSize !== stackSize) return;
+    if (!bookingReady || !pallet || !controller || pallet.stackSize !== stackSize) return;
 
     setError(null);
 
@@ -808,7 +841,7 @@ export function App() {
     const controller = controllerRef.current;
     const pallet = PALLET_TYPES.find((item) => item.id === palletId);
 
-    if (!controller || !pallet || backendRole !== 'ADMIN') {
+    if (!bookingReady || !controller || !pallet || backendRole !== 'ADMIN') {
       throw new Error('admin-required');
     }
     if (!Number.isInteger(targetStock) || targetStock < 0) {
@@ -856,7 +889,7 @@ export function App() {
 
   const undoLastProcess = async () => {
     const controller = controllerRef.current;
-    if (!controller || !lastAction) return;
+    if (!bookingReady || !controller || !lastAction) return;
 
     setError(null);
     try {
@@ -940,8 +973,14 @@ export function App() {
       : `${outgoingChange >= 0 ? '+' : ''}${Math.round(outgoingChange)} % zur Vorperiode`;
 
   const syncDisplay = (() => {
+    if (lastRetryError === 'INSUFFICIENT_STOCK' && pendingCount > 0) {
+      return `Bestand reicht noch nicht · ${pendingCount} ausstehend`;
+    }
     if (lastRetryError === 'QUOTA_EXHAUSTED') return 'Kontingent erreicht';
     if (lastRetryError === 'UNAUTHENTICATED') return 'Anmeldung prüfen';
+    if (lastRetryError === 'PERMISSION_DENIED' && pendingCount > 0) {
+      return `Server verweigert · ${pendingCount} ausstehend`;
+    }
     if (backendState === 'INITIALIZING') return 'Verbinde …';
     if (backendState === 'NOT_CONFIGURED') {
       return pendingCount > 0 ? `Nur lokal · ${pendingCount} ausstehend` : 'Nur lokal';
@@ -956,13 +995,16 @@ export function App() {
       return pendingCount > 0 ? `Offline · ${pendingCount} ausstehend` : 'Offline';
     }
     if (backendState === 'ERROR') return 'Sync prüfen';
+    if (rejectedCount > 0) return `${rejectedCount} abgelehnt`;
     return syncLabel(syncState, pendingCount);
   })();
 
   const syncTone =
     lastRetryError === 'QUOTA_EXHAUSTED'
       ? 'quota'
-      : lastRetryError === 'UNAUTHENTICATED'
+      : lastRetryError === 'INSUFFICIENT_STOCK'
+          || lastRetryError === 'UNAUTHENTICATED'
+          || (lastRetryError === 'PERMISSION_DENIED' && pendingCount > 0)
         ? 'error'
         : backendState === 'ACTIVE'
           ? syncState.toLowerCase()
@@ -1007,9 +1049,39 @@ export function App() {
           >
             DATEN
           </button>
-          <div
+          <button
+            type="button"
             className={`sync-pill sync-${syncTone}`}
-            aria-label="Synchronisationsstatus"
+            aria-label="Synchronisierung prüfen"
+            disabled={
+              manualSyncing
+              || backendState === 'INITIALIZING'
+              || backendState === 'NOT_CONFIGURED'
+              || backendState === 'DISABLED'
+              || backendState === 'OFFLINE'
+            }
+            onClick={() => {
+              if (!manualSyncRef.current) {
+                resetFirebaseRuntimeForRetry();
+                window.location.reload();
+                return;
+              }
+              setManualSyncing(true);
+              void manualSyncRef.current()
+                .catch(async (caught) => {
+                  setBackendState('ERROR');
+                  if (controllerRef.current) {
+                    await recordSyncError(
+                      controllerRef.current,
+                      'MANUAL_SYNC_FAILED',
+                      caught,
+                    );
+                  }
+                })
+                .finally(() => {
+                  setManualSyncing(false);
+                });
+            }}
             title={
               backendState === 'AWAITING_APPROVAL' && backendUid
                 ? `Geräte-ID: ${backendUid}`
@@ -1017,8 +1089,8 @@ export function App() {
             }
           >
             <span className="sync-dot" />
-            {syncDisplay}
-          </div>
+            {manualSyncing ? 'Prüfe …' : syncDisplay}
+          </button>
         </div>
       </header>
 
@@ -1039,6 +1111,13 @@ export function App() {
       {error && (
         <div className="error-banner" role="alert">
           {error}
+        </div>
+      )}
+
+      {rejectedSummary && (
+        <div className="error-banner rejection-banner" role="alert">
+          <span>{rejectedCount} Buchung{rejectedCount === 1 ? '' : 'en'} abgelehnt: {rejectedSummary}</span>
+          <button onClick={() => setOpsOpen(true)}>DATEN ÖFFNEN</button>
         </div>
       )}
 
@@ -1153,7 +1232,7 @@ export function App() {
               </strong>
             </div>
             <button
-              disabled={!lastAction}
+              disabled={!bookingReady || !lastAction}
               onClick={() => void undoLastProcess()}
             >
               RÜCKGÄNGIG

@@ -100,6 +100,21 @@ class DependencyRemote extends FakeRemote {
   }
 }
 
+class FloorRemote extends FakeRemote {
+  stock = 14;
+  readonly uploadOrder: string[] = [];
+
+  override async createEvent(event: PalletEvent): Promise<RemoteCreateResult> {
+    if (this.stock + event.delta < 0) {
+      throw new RemoteCreateError('INSUFFICIENT_STOCK', 'stock-below-zero');
+    }
+    const result = await super.createEvent(event);
+    this.stock += event.delta;
+    this.uploadOrder.push(event.id);
+    return result;
+  }
+}
+
 afterEach(async () => {
   for (const name of dbNames.splice(0)) {
     const db = new UphoffLocalDb(name);
@@ -108,6 +123,45 @@ afterEach(async () => {
 });
 
 describe('E2.2 outbox and retry', () => {
+  it('keeps a stock shortage queued and confirms the same booking after replenishment', async () => {
+    const db = makeDb('e22-stock-replenished');
+    const remote = new FloorRemote();
+    remote.stock = 0;
+    await persistAndQueueEvent(db, makeEvent({ id: 'shortage', art: 'ABGANG', delta: -1 }), 1000);
+
+    expect(await runSyncPass(db, remote, 1000)).toMatchObject({ retried: 1, rejected: 0 });
+    expect((await db.events.get('shortage'))?.syncState).toBe('PENDING');
+    expect((await db.outbox.get('shortage'))?.lastError).toBe('INSUFFICIENT_STOCK');
+
+    remote.stock = 1;
+    expect((await runSyncPass(db, remote, 120_000)).confirmed).toBe(1);
+    expect(remote.events.has('shortage')).toBe(true);
+    expect(await db.outbox.count()).toBe(0);
+    await db.close();
+  });
+  it('uploads stock-increasing corrections first when undoing a mixed operation', async () => {
+    const db = makeDb('e22-mixed-undo-floor');
+    const remote = new FloorRemote();
+    await db.events.bulkPut([
+      makeEvent({ id: 'stack', delta: 15, syncState: 'CONFIRMED' }),
+      makeEvent({ id: 'minus', delta: -1, art: 'ZUGANG', syncState: 'CONFIRMED' }),
+    ]);
+
+    await persistAndQueueEvent(db, makeEvent({
+      id: 'korr_stack', art: 'KORREKTUR', delta: -15, korrigiertId: 'stack',
+    }), 1000);
+    await persistAndQueueEvent(db, makeEvent({
+      id: 'korr_minus', art: 'KORREKTUR', delta: 1, korrigiertId: 'minus',
+    }), 1001);
+
+    const result = await runSyncPass(db, remote, 1001);
+    expect(result).toMatchObject({ confirmed: 2, rejected: 0 });
+    expect(remote.uploadOrder).toEqual(['korr_minus', 'korr_stack']);
+    expect(remote.stock).toBe(0);
+    expect(await db.outbox.count()).toBe(0);
+    await db.close();
+  });
+
   it('atomically persists the event and its outbox item', async () => {
     const db = makeDb('e22-atomic');
     const result = await persistAndQueueEvent(db, makeEvent(), 1000);
@@ -189,6 +243,7 @@ describe('E2.2 outbox and retry', () => {
   });
 
   it('rejects same-id remote content conflict instead of overwriting it', async () => {
+    // This is deterministic: immutable server content already owns this ID.
     const db = makeDb('e22-conflict');
     const remote = new FakeRemote();
 
@@ -214,18 +269,129 @@ describe('E2.2 outbox and retry', () => {
     await db.close();
   });
 
-  it('marks permanent permission errors rejected and does not silently retry forever', async () => {
+  it('keeps a server permission denial pending and delivers it once access returns', async () => {
+    // Regression: a briefly disabled device, a missing App Check token or a
+    // device clock ahead of the server all surface as PERMISSION_DENIED.
+    // None of them may silently remove a real booking from the stock.
     const db = makeDb('e22-permission');
     const remote = new FakeRemote();
     remote.mode = 'PERMISSION_DENIED';
     await persistAndQueueEvent(db, makeEvent(), 1000);
 
+    const denied = await runSyncPass(db, remote, 1000);
+
+    expect(denied.rejected).toBe(0);
+    expect(denied.retried).toBe(1);
+    expect(denied.permissionDenied).toBe(1);
+    expect((await db.events.get('event-1'))?.syncState).toBe('PENDING');
+    expect((await db.outbox.get('event-1'))?.lastError).toBe('PERMISSION_DENIED');
+
+    remote.mode = 'NORMAL';
+    const recovered = await runSyncPass(db, remote, 120_000);
+
+    expect(recovered.confirmed).toBe(1);
+    expect((await db.events.get('event-1'))?.syncState).toBe('CONFIRMED');
+    expect(await db.outbox.count()).toBe(0);
+    await db.close();
+  });
+
+  it('requeues a standalone booking rejected by an older client', async () => {
+    const db = makeDb('e22-legacy-rejection');
+    const remote = new FakeRemote();
+    await persistAndQueueEvent(db, makeEvent(), 1000);
+    await db.events.update('event-1', {
+      syncState: 'REJECTED', rejectionReason: 'PERMISSION_DENIED',
+    });
+    await db.outbox.delete('event-1');
+
+    const result = await runSyncPass(db, remote, 2000);
+    expect(result).toMatchObject({ confirmed: 1, rejected: 0 });
+    expect((await db.events.get('event-1'))?.syncState).toBe('CONFIRMED');
+    expect(remote.events.has('event-1')).toBe(true);
+    await db.close();
+  });
+
+  it('keeps an ambiguous invalid-argument response until a later success', async () => {
+    const db = makeDb('e22-invalid-argument');
+    let blocked = true;
+    const remote: RemoteEventStore = {
+      async createEvent() {
+        if (blocked) throw new RemoteCreateError('INVALID_ARGUMENT', 'unknown-argument');
+        return { status: 'CREATED' };
+      },
+      async getEvent() {
+        return undefined;
+      },
+    };
+    await persistAndQueueEvent(db, makeEvent(), 1000);
+
     const result = await runSyncPass(db, remote, 1000);
 
-    expect(result.rejected).toBe(1);
-    expect(await db.outbox.count()).toBe(0);
-    expect((await db.events.get('event-1'))?.syncState).toBe('REJECTED');
-    expect((await db.events.get('event-1'))?.rejectionReason).toBe('PERMISSION_DENIED');
+    expect(result.rejected).toBe(0);
+    expect((await db.events.get('event-1'))?.syncState).toBe('PENDING');
+    blocked = false;
+    expect((await runSyncPass(db, remote, 120_000)).confirmed).toBe(1);
+    await db.close();
+  });
+
+  it('keeps a duplicate-check miss for a later verification', async () => {
+    const db = makeDb('e22-verify-not-found');
+    await persistAndQueueEvent(db, makeEvent(), 1000);
+    let visible = false;
+    const remote: RemoteEventStore = {
+      async createEvent() { throw new RemoteCreateError('ALREADY_EXISTS', 'exists'); },
+      async getEvent(id) {
+        return visible ? { ...makeEvent(), id, serverzeit: '2026-09-23T10:00:01Z' } : undefined;
+      },
+    };
+    expect((await runSyncPass(db, remote, 1000)).retried).toBe(1);
+    expect((await db.events.get('event-1'))?.syncState).toBe('PENDING');
+    visible = true;
+    expect((await runSyncPass(db, remote, 120_000)).confirmed).toBe(1);
+    await db.close();
+  });
+
+  it('keeps an unknown runtime error and continues with the next booking', async () => {
+    const db = makeDb('e22-unknown-error');
+    await persistAndQueueEvent(db, makeEvent({ id: 'first' }), 1000);
+    await persistAndQueueEvent(db, makeEvent({ id: 'second' }), 2000);
+    const remote: RemoteEventStore = {
+      async createEvent(event) {
+        if (event.id === 'first') throw new Error('unexpected-adapter-failure');
+        return { status: 'CREATED' };
+      },
+      async getEvent() { return undefined; },
+    };
+    const result = await runSyncPass(db, remote, 10_000);
+    expect(result).toMatchObject({ retried: 1, confirmed: 1, rejected: 0 });
+    expect(await db.outbox.count()).toBe(1);
+    await db.close();
+  });
+
+  it('retries one unreadable duplicate check without blocking bookings behind it', async () => {
+    const db = makeDb('e22-verify-read-failure');
+    await persistAndQueueEvent(db, makeEvent({ id: 'first' }), 1000);
+    await persistAndQueueEvent(db, makeEvent({ id: 'second' }), 2000);
+    const created: string[] = [];
+    const remote: RemoteEventStore = {
+      async createEvent(event) {
+        if (event.id === 'first') {
+          throw new RemoteCreateError('ALREADY_EXISTS', 'exists');
+        }
+        created.push(event.id);
+        return { status: 'CREATED' };
+      },
+      async getEvent() {
+        throw new Error('invalid-remote-serverzeit');
+      },
+    };
+
+    const result = await runSyncPass(db, remote, 10_000);
+
+    expect(created).toEqual(['second']);
+    expect(result.retried).toBe(1);
+    expect((await db.outbox.get('first'))?.attemptCount).toBe(1);
+    expect((await db.events.get('first'))?.syncState).toBe('PENDING');
     await db.close();
   });
 
@@ -325,7 +491,7 @@ describe('E2.2 outbox and retry', () => {
     await db.close();
   });
 
-  it('rejects a dependent correction instead of retrying forever after the original is rejected', async () => {
+  it('restores a legacy permission rejection together with its dependent correction', async () => {
     const db = makeDb('e22-correction-original-rejected');
     const remote = new FakeRemote();
 
@@ -357,14 +523,12 @@ describe('E2.2 outbox and retry', () => {
 
     const result = await runSyncPass(db, remote, 1000);
 
-    expect(result.rejected).toBe(1);
-    expect(await db.outbox.get('korr_bad-original')).toBeUndefined();
+    expect(result).toMatchObject({ confirmed: 2, rejected: 0 });
+    expect(await db.outbox.count()).toBe(0);
     expect(
       (await db.events.get('korr_bad-original'))?.syncState,
-    ).toBe('REJECTED');
-    expect(
-      (await db.events.get('korr_bad-original'))?.rejectionReason,
-    ).toBe('ORIGINAL_REJECTED');
+    ).toBe('CONFIRMED');
+    expect((await db.events.get('bad-original'))?.syncState).toBe('CONFIRMED');
     await db.close();
   });
 

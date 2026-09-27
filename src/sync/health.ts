@@ -43,7 +43,7 @@ export async function getSyncHealth(
   nowMs = Date.now(),
   staleAfterMs = 10 * 60 * 1000,
 ): Promise<SyncHealth> {
-  const [pendingCount, rejectedCount, meta, outbox] = await Promise.all([
+  const [pendingEvents, rejectedCount, meta, outbox] = await Promise.all([
     db.events
       .filter(
         (event) =>
@@ -54,6 +54,10 @@ export async function getSyncHealth(
     db.meta.get('lastSuccessfulSyncAt'),
     db.outbox.toArray(),
   ]);
+  const outboxEvents = await db.events.bulkGet(outbox.map((item) => item.eventId));
+  const pendingCount = pendingEvents + outboxEvents.filter(
+    (event) => !event || (event.syncState !== 'LOCAL_ONLY' && event.syncState !== 'PENDING'),
+  ).length;
 
   const latestFailed = outbox
     .filter(
