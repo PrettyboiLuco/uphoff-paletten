@@ -268,9 +268,12 @@ export class FirestoreRemoteEventStore implements RemoteRealtimeEventStore {
 
     return onSnapshot(
       source,
+      { includeMetadataChanges: true },
       (snapshot) => {
-        for (const change of snapshot.docChanges()) {
-          if (change.type !== 'added') continue;
+        for (const change of snapshot.docChanges({ includeMetadataChanges: true })) {
+          if (change.type === 'removed' || change.doc.metadata.hasPendingWrites) {
+            continue;
+          }
           try {
             const event = fromFirestoreEvent(
               change.doc.data(),
