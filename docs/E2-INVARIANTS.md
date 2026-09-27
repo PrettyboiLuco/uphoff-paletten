@@ -23,8 +23,11 @@ E2 beweist, dass eine Buchung lokal dauerhaft erhalten bleibt, sich idempotent s
 13. **Konfiguration versioniert:** Bereits lokal gebuchte Events behalten ihre `konfigVersion`.
 14. **Admin-Regeln serverseitig:** INVENTUR, ANFANGSBESTAND und UMBUCHUNG sind serverseitig nicht nur durch UI geschützt.
 15. **Keine stille Reparatur:** Unauflösbare Abweichungen werden markiert; niemals wird heimlich ein Bestand "zurechtgesetzt".
-16. **Im Zweifel behalten:** `REJECTED` nur für Fehler, die für genau diesen Event-Inhalt deterministisch sind (`INVALID_ARGUMENT`, ID-Inhaltskonflikt). Alles, was sich von selbst oder durch einen Admin wieder auflösen kann (Gerät kurz gesperrt, App Check, Geräteuhr, `internal`/`unknown`/`cancelled`/`failed-precondition`, Timeouts), bleibt in der Outbox und wird sichtbar wiederholt. Die Zuordnung steht an genau einer Stelle: `REMOTE_ERROR_POLICY` in `src/sync/types.ts`; ein neuer Fehlercode ohne Eintrag bricht `npm run typecheck`.
+16. **Im Zweifel behalten:** `REJECTED` nur für nachgewiesen deterministische Konflikte des konkreten Inhalts (derzeit: dieselbe Event-ID mit anderem Inhalt). Kein roher Firebase-Fehlercode, auch nicht `invalid-argument`, beweist das allein. Alles, was sich von selbst oder durch einen Admin wieder auflösen kann (Gerät kurz gesperrt, App Check, Geräteuhr, `internal`/`unknown`/`cancelled`/`failed-precondition`, Timeouts und später wieder ausreichender Bestand), bleibt in der Outbox und wird sichtbar wiederholt. Die Zuordnung steht an genau einer Stelle: `REMOTE_ERROR_POLICY` in `src/sync/types.ts`; ein neuer Fehlercode ohne Eintrag bricht `npm run typecheck`. Beim Zusammenführen mit dem Bestands-Fix muss `INSUFFICIENT_STOCK` daher `RETRY` erhalten und nach einer Bestandsauffüllung mit echten Regeln bestätigt werden.
 17. **Fehlerpfade mit echten Regeln testen:** Jede serverseitige Ablehnung, die ein Fake im Unit-Test simuliert, braucht zusätzlich einen Emulator-Test mit `firestore.rules`, der den Auslöser real herstellt und den Ausgang nach Wegfall des Auslösers prüft (`tests/firestore.recovery.test.ts`).
+18. **Alte Ablehnungen retten:** Beim nächsten Sync werden lokale `REJECTED`-Buchungen aus früheren mehrdeutigen Serverfehlern wieder mit derselben ID eingereiht. Ein nachgewiesener ID-Inhaltskonflikt bleibt zur manuellen Klärung markiert. Das setzt voraus, dass die lokalen Gerätedaten noch vorhanden sind.
+
+Firebase `@firebase/firestore` (`remote/rpc_error.ts`, `isPermanentError`) stuft unter anderem `INVALID_ARGUMENT`, `PERMISSION_DENIED`, `FAILED_PRECONDITION` und `ABORTED` für die Wiederholung **derselben RPC-Anfrage** als permanent ein. Die lokale Outbox beantwortet eine andere Frage: ob eine fachliche Buchung nach geänderten Geräte-, Token-, Zeit- oder Bestandsbedingungen später noch angenommen werden kann. Darum bewahrt sie diese Buchung mit stabiler ID auf und versucht sie später erneut. Nur der Vergleich zweier vorhandener, unterschiedlicher Inhalte unter derselben ID beweist hier einen dauerhaften Inhaltskonflikt.
 
 ## Gate-Struktur
 
@@ -73,3 +76,4 @@ E2 beweist, dass eine Buchung lokal dauerhaft erhalten bleibt, sich idempotent s
 ## Abnahme
 
 E2 ist erst abgeschlossen, wenn E2.1 bis E2.4 jeweils unabhängig grün sind. UI, Statistik und Layout-Editor dürfen die Persistenz-/Sync-Domain danach nur konsumieren, nicht umgehen.
+

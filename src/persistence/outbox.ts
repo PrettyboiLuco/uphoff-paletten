@@ -53,6 +53,36 @@ export async function getReadyOutboxItems(
     .toArray();
 }
 
+/** Requeue bookings discarded by older clients for ambiguous server errors. */
+export async function restoreRetryableRejections(
+  db: UphoffLocalDb,
+  now: number,
+): Promise<number> {
+  return db.transaction('rw', db.events, db.outbox, async () => {
+    const rejected = await db.events.where('syncState').equals('REJECTED').toArray();
+    let restored = 0;
+    for (const event of rejected) {
+      // The server already owns this ID with different immutable content.
+      // Retrying cannot replace it; the separate conflict record needs review.
+      if (event.rejectionReason === 'ID_CONTENT_CONFLICT') continue;
+      if (event.rejectionReason === 'ORIGINAL_REJECTED' && event.korrigiertId) {
+        const original = await db.events.get(event.korrigiertId);
+        if (original?.rejectionReason === 'ID_CONTENT_CONFLICT') continue;
+      }
+      const { rejectionReason: _oldReason, ...booking } = event;
+      await db.events.put({ ...booking, syncState: 'PENDING' });
+      await db.outbox.put({
+        eventId: event.id,
+        status: 'READY',
+        attemptCount: 0,
+        nextAttemptAt: now,
+      });
+      restored += 1;
+    }
+    return restored;
+  });
+}
+
 export async function markConfirmed(
   db: UphoffLocalDb,
   eventId: string,
@@ -150,3 +180,4 @@ export async function persistAndQueueEvents(
     return { status: 'QUEUED', events: toInsert };
   });
 }
+

@@ -189,6 +189,7 @@ describe('E2.2 outbox and retry', () => {
   });
 
   it('rejects same-id remote content conflict instead of overwriting it', async () => {
+    // This is deterministic: immutable server content already owns this ID.
     const db = makeDb('e22-conflict');
     const remote = new FakeRemote();
 
@@ -240,11 +241,29 @@ describe('E2.2 outbox and retry', () => {
     await db.close();
   });
 
-  it('rejects only deterministic content errors for good', async () => {
+  it('requeues a standalone booking rejected by an older client', async () => {
+    const db = makeDb('e22-legacy-rejection');
+    const remote = new FakeRemote();
+    await persistAndQueueEvent(db, makeEvent(), 1000);
+    await db.events.update('event-1', {
+      syncState: 'REJECTED', rejectionReason: 'PERMISSION_DENIED',
+    });
+    await db.outbox.delete('event-1');
+
+    const result = await runSyncPass(db, remote, 2000);
+    expect(result).toMatchObject({ confirmed: 1, rejected: 0 });
+    expect((await db.events.get('event-1'))?.syncState).toBe('CONFIRMED');
+    expect(remote.events.has('event-1')).toBe(true);
+    await db.close();
+  });
+
+  it('keeps an ambiguous invalid-argument response until a later success', async () => {
     const db = makeDb('e22-invalid-argument');
+    let blocked = true;
     const remote: RemoteEventStore = {
       async createEvent() {
-        throw new RemoteCreateError('INVALID_ARGUMENT', 'bad-field');
+        if (blocked) throw new RemoteCreateError('INVALID_ARGUMENT', 'unknown-argument');
+        return { status: 'CREATED' };
       },
       async getEvent() {
         return undefined;
@@ -254,8 +273,44 @@ describe('E2.2 outbox and retry', () => {
 
     const result = await runSyncPass(db, remote, 1000);
 
-    expect(result.rejected).toBe(1);
-    expect((await db.events.get('event-1'))?.rejectionReason).toBe('INVALID_ARGUMENT');
+    expect(result.rejected).toBe(0);
+    expect((await db.events.get('event-1'))?.syncState).toBe('PENDING');
+    blocked = false;
+    expect((await runSyncPass(db, remote, 120_000)).confirmed).toBe(1);
+    await db.close();
+  });
+
+  it('keeps a duplicate-check miss for a later verification', async () => {
+    const db = makeDb('e22-verify-not-found');
+    await persistAndQueueEvent(db, makeEvent(), 1000);
+    let visible = false;
+    const remote: RemoteEventStore = {
+      async createEvent() { throw new RemoteCreateError('ALREADY_EXISTS', 'exists'); },
+      async getEvent(id) {
+        return visible ? { ...makeEvent(), id, serverzeit: '2026-09-23T10:00:01Z' } : undefined;
+      },
+    };
+    expect((await runSyncPass(db, remote, 1000)).retried).toBe(1);
+    expect((await db.events.get('event-1'))?.syncState).toBe('PENDING');
+    visible = true;
+    expect((await runSyncPass(db, remote, 120_000)).confirmed).toBe(1);
+    await db.close();
+  });
+
+  it('keeps an unknown runtime error and continues with the next booking', async () => {
+    const db = makeDb('e22-unknown-error');
+    await persistAndQueueEvent(db, makeEvent({ id: 'first' }), 1000);
+    await persistAndQueueEvent(db, makeEvent({ id: 'second' }), 2000);
+    const remote: RemoteEventStore = {
+      async createEvent(event) {
+        if (event.id === 'first') throw new Error('unexpected-adapter-failure');
+        return { status: 'CREATED' };
+      },
+      async getEvent() { return undefined; },
+    };
+    const result = await runSyncPass(db, remote, 10_000);
+    expect(result).toMatchObject({ retried: 1, confirmed: 1, rejected: 0 });
+    expect(await db.outbox.count()).toBe(1);
     await db.close();
   });
 
@@ -382,7 +437,7 @@ describe('E2.2 outbox and retry', () => {
     await db.close();
   });
 
-  it('rejects a dependent correction instead of retrying forever after the original is rejected', async () => {
+  it('restores a legacy permission rejection together with its dependent correction', async () => {
     const db = makeDb('e22-correction-original-rejected');
     const remote = new FakeRemote();
 
@@ -414,16 +469,15 @@ describe('E2.2 outbox and retry', () => {
 
     const result = await runSyncPass(db, remote, 1000);
 
-    expect(result.rejected).toBe(1);
-    expect(await db.outbox.get('korr_bad-original')).toBeUndefined();
+    expect(result).toMatchObject({ confirmed: 2, rejected: 0 });
+    expect(await db.outbox.count()).toBe(0);
     expect(
       (await db.events.get('korr_bad-original'))?.syncState,
-    ).toBe('REJECTED');
-    expect(
-      (await db.events.get('korr_bad-original'))?.rejectionReason,
-    ).toBe('ORIGINAL_REJECTED');
+    ).toBe('CONFIRMED');
+    expect((await db.events.get('bad-original'))?.syncState).toBe('CONFIRMED');
     await db.close();
   });
 
 
 });
+

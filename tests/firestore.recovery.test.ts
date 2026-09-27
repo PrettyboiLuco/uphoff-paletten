@@ -94,6 +94,25 @@ describe('release integration: recoverable server denials', () => {
     await local.close();
   });
 
+  it('recovers a booking that an older client rejected after a real device lock', async () => {
+    const local = new UphoffLocalDb(`recovery-legacy-${dbCounter}`);
+    const event = booking();
+    await persistAndQueueEvent(local, event, Date.now());
+    await setDevice(false);
+    await expect(remote().createEvent(event)).rejects.toMatchObject({
+      code: 'PERMISSION_DENIED',
+    });
+    await local.events.update(event.id, {
+      syncState: 'REJECTED', rejectionReason: 'PERMISSION_DENIED',
+    });
+    await local.outbox.delete(event.id);
+
+    await setDevice(true);
+    expect((await runSyncPass(local, remote(), Date.now())).confirmed).toBe(1);
+    expect(await onServer(event.id)).toBe(true);
+    await local.close();
+  });
+
   it('uploads a booking from a device whose clock runs minutes ahead', async () => {
     const local = new UphoffLocalDb(`recovery-clock-${dbCounter}`);
     const event = booking(new Date(Date.now() + 6 * 60_000).toISOString());
@@ -104,4 +123,24 @@ describe('release integration: recoverable server denials', () => {
     expect(await onServer(event.id)).toBe(true);
     await local.close();
   });
+
+  it('retains a booking denied by the real time rule and uploads it after time catches up', async () => {
+    const local = new UphoffLocalDb(`recovery-future-${dbCounter}`);
+    // The same event is retried unchanged. A timestamp just beyond the 24 h
+    // rule becomes valid after server time advances a few seconds.
+    const event = booking(new Date(Date.now() + 24 * 60 * 60_000 + 4_000).toISOString());
+    await persistAndQueueEvent(local, event, Date.now());
+
+    const denied = await runSyncPass(local, remote(), Date.now());
+    expect(denied).toMatchObject({ confirmed: 0, rejected: 0, permissionDenied: 1 });
+    expect(await local.outbox.count()).toBe(1);
+    expect((await loadProjection(local)).bestandJeSorte['typ-1']).toBe(15);
+
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    const recovered = await runSyncPass(local, remote(), Date.now());
+    expect(recovered.confirmed).toBe(1);
+    expect(await onServer(event.id)).toBe(true);
+    await local.close();
+  }, 15_000);
 });
+

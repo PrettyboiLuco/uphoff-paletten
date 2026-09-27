@@ -24,8 +24,8 @@ const event = {
   konfigVersion: 'v1',
 };
 
-// Every gRPC status the Firebase SDK can surface. Only content errors may end
-// in REJECT; everything else must stay in the outbox (see REMOTE_ERROR_POLICY).
+// Every gRPC status the Firebase SDK can surface. None of these raw statuses
+// proves that this exact booking content can never be accepted.
 const ALL_FIREBASE_CODES = [
   'cancelled', 'unknown', 'invalid-argument', 'deadline-exceeded', 'not-found',
   'already-exists', 'permission-denied', 'resource-exhausted',
@@ -42,6 +42,7 @@ describe('remote error policy', () => {
     const mapped = (caught as { code: keyof typeof REMOTE_ERROR_POLICY }).code;
     const policy = REMOTE_ERROR_POLICY[mapped];
 
-    expect(policy).toBe(code === 'invalid-argument' ? 'REJECT' : 'RETRY');
+    expect(policy).toBe('RETRY');
   });
 });
+

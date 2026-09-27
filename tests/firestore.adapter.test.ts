@@ -194,7 +194,7 @@ describe('release integration: Firestore adapter + real rules', () => {
     );
   });
 
-  it('maps a mismatched device identity to a permanent permission error', async () => {
+  it('maps a mismatched device identity to a permission error for retry', async () => {
     const db = env.authenticatedContext('phone-a').firestore();
     const remote = new FirestoreRemoteEventStore(db as unknown as Firestore);
 
@@ -212,3 +212,4 @@ describe('release integration: Firestore adapter + real rules', () => {
     }
   });
 });
+
