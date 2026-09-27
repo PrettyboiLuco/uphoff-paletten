@@ -78,4 +78,3 @@ describe('Firestore realtime listener', () => {
     expect(received[0]?.serverzeit).toBe('2026-09-27T10:00:01.000Z');
   });
 });
-
